@@ -5,20 +5,21 @@ use lean_vm::{MAX_WHIR_LOG_INV_RATE, MIN_WHIR_LOG_INV_RATE};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rec_aggregation::{
-    aggregate_type_1, init_aggregation_bytecode, merge_many_type_1, split_type_2, verify_type_1,
-    verify_type_2, TypeOneMultiSignature, MAX_RECURSIONS,
+    aggregate_single_message_signatures, init_aggregation_bytecode,
+    merge_single_message_aggregates, split_multi_message_aggregate, verify_multi_message_aggregate,
+    verify_single_message_aggregate, SingleMessageAggregateSignature, MAX_RECURSIONS,
 };
 use xmss::{XmssPublicKey, XmssSignature};
 
 use crate::error::{AggregationError, VerifyError};
 use crate::types::{
-    message_from_bytes, wrap_pubkeys, PyMultiMessageSignature, PyPublicKey, PySignature,
+    message_array, wrap_pubkeys, PyMultiMessageSignature, PyPublicKey, PySignature,
     PySingleMessageSignature,
 };
 
 /// True iff `passed`, sorted by `XmssPublicKey::cmp`, equals `expected`.
 /// `expected` is assumed already sorted (upstream invariant on
-/// `TypeOneInfo::pubkeys`).
+/// `SingleMessageInfo::pubkeys`).
 fn pubkeys_match_sorted(passed: &[PyRef<'_, PyPublicKey>], expected: &[XmssPublicKey]) -> bool {
     if passed.len() != expected.len() {
         return false;
@@ -29,26 +30,26 @@ fn pubkeys_match_sorted(passed: &[PyRef<'_, PyPublicKey>], expected: &[XmssPubli
 }
 
 /// Validate that the caller-passed `(message, slot, pubkeys)` triple matches
-/// what's bound inside a `TypeOneInfo`. `label` prefixes error messages
+/// what's bound inside a `SingleMessageInfo`. `label` prefixes error messages
 /// (`""` for SingleMessage, `"component {i} "` for MultiMessage).
 fn check_bound_info(
     label: &str,
-    bound: &rec_aggregation::TypeOneInfo,
+    bound: &rec_aggregation::SingleMessageInfo,
     pub_keys: &[PyRef<'_, PyPublicKey>],
     message: &[u8],
     slot: u32,
 ) -> PyResult<()> {
-    let msg_fe = message_from_bytes(message)?;
-    if bound.message != msg_fe {
+    let msg = message_array(message)?;
+    if bound.core.message != msg {
         return Err(VerifyError::new_err(format!(
             "{}message does not match the message bound in the signature",
             label
         )));
     }
-    if bound.slot != slot {
+    if bound.core.slot != slot {
         return Err(VerifyError::new_err(format!(
             "{}slot ({}) does not match the slot bound in the signature ({})",
-            label, slot, bound.slot
+            label, slot, bound.core.slot
         )));
     }
     if !pubkeys_match_sorted(pub_keys, &bound.pubkeys) {
@@ -98,7 +99,7 @@ impl PyProver {
                 signatures.len()
             )));
         }
-        let msg_fe = message_from_bytes(message)?;
+        let msg = message_array(message)?;
 
         let raw_xmss: Vec<(XmssPublicKey, XmssSignature)> = pub_keys
             .iter()
@@ -106,7 +107,7 @@ impl PyProver {
             .map(|(p, s)| ((*p.inner).clone(), (*s.inner).clone()))
             .collect();
 
-        let children_owned: Vec<TypeOneMultiSignature> = children
+        let children_owned: Vec<SingleMessageAggregateSignature> = children
             .unwrap_or_default()
             .iter()
             .map(|c| (*c.inner).clone())
@@ -114,7 +115,15 @@ impl PyProver {
 
         let log_inv_rate = self.log_inv_rate;
         let result = py
-            .detach(|| aggregate_type_1(&children_owned, raw_xmss, msg_fe, slot, log_inv_rate))
+            .detach(|| {
+                aggregate_single_message_signatures(
+                    &children_owned,
+                    raw_xmss,
+                    msg,
+                    slot,
+                    log_inv_rate,
+                )
+            })
             .map_err(|e| AggregationError::new_err(format!("aggregation failed: {:?}", e)))?;
 
         let py_pks = wrap_pubkeys(&result.info.pubkeys);
@@ -144,13 +153,15 @@ impl PyProver {
                 signatures.len()
             )));
         }
-        let owned: Vec<TypeOneMultiSignature> =
+        let owned: Vec<SingleMessageAggregateSignature> =
             signatures.iter().map(|s| (*s.inner).clone()).collect();
         let log_inv_rate = self.log_inv_rate;
         let result = py
-            .detach(move || merge_many_type_1(owned, log_inv_rate))
+            .detach(move || merge_single_message_aggregates(owned, log_inv_rate))
             .map_err(|e| AggregationError::new_err(format!("merge failed: {:?}", e)))?;
-        Ok(PyMultiMessageSignature { inner: Arc::new(result) })
+        Ok(PyMultiMessageSignature {
+            inner: Arc::new(result),
+        })
     }
 
     /// 1 zkVM proving op per call — not free.
@@ -169,14 +180,17 @@ impl PyProver {
                 if n == 1 { "" } else { "s" }
             )));
         }
-        // Deep clone (multi-MB): split_type_2 takes ownership and we share
-        // the Arc with Python — contrast with verify_multi's Arc::clone.
+        // Deep clone (multi-MB): split_multi_message_aggregate takes ownership
+        // and we share the Arc with Python — contrast with verify_multi's
+        // Arc::clone.
         let owned = (*agg.inner).clone();
         let log_inv_rate = self.log_inv_rate;
         let result = py
-            .detach(move || split_type_2(owned, index, log_inv_rate))
+            .detach(move || split_multi_message_aggregate(owned, index, log_inv_rate))
             .map_err(|e| AggregationError::new_err(format!("split failed: {:?}", e)))?;
-        Ok(PySingleMessageSignature { inner: Arc::new(result) })
+        Ok(PySingleMessageSignature {
+            inner: Arc::new(result),
+        })
     }
 }
 
@@ -204,8 +218,10 @@ impl PyVerifier {
         // Bump the Arc refcount instead of deep-cloning the multi-MB WHIR
         // proof to satisfy `py.detach`'s `'static` requirement.
         let inner = Arc::clone(&agg.inner);
-        py.detach(move || verify_type_1(&inner))
-            .map_err(|e| VerifyError::new_err(format!("aggregated signature verification failed: {:?}", e)))?;
+        py.detach(move || verify_single_message_aggregate(&inner))
+            .map_err(|e| {
+                VerifyError::new_err(format!("aggregated signature verification failed: {:?}", e))
+            })?;
         Ok(())
     }
 
@@ -226,11 +242,17 @@ impl PyVerifier {
         for (i, ((pub_keys, message, slot), bound)) in
             components.iter().zip(agg.inner.info.iter()).enumerate()
         {
-            check_bound_info(&format!("component {} ", i), bound, pub_keys, message, *slot)?;
+            check_bound_info(
+                &format!("component {} ", i),
+                bound,
+                pub_keys,
+                message,
+                *slot,
+            )?;
         }
 
         let inner = Arc::clone(&agg.inner);
-        py.detach(move || verify_type_2(&inner))
+        py.detach(move || verify_multi_message_aggregate(&inner))
             .map_err(|e| {
                 VerifyError::new_err(format!("multi-message verification failed: {:?}", e))
             })?;

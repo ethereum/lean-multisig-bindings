@@ -2,42 +2,42 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use backend::KoalaBear;
 use pyo3::prelude::*;
 use pyo3::pyclass::CompareOp;
 use pyo3::types::PyBytes;
-use rec_aggregation::{TypeOneMultiSignature, TypeTwoMultiSignature};
-use xmss::{XmssPublicKey, XmssSecretKey, XmssSignature, MESSAGE_LEN_FE};
+use rec_aggregation::{MultiMessageAggregateSignature, SingleMessageAggregateSignature};
+use xmss::{XmssPublicKey, XmssSecretKey, XmssSignature, MESSAGE_LEN_BYTES};
 
 use crate::error::SerializationError;
 use crate::serialization::{
-    decode_multi_message_signature, decode_public_key, decode_signature,
-    decode_single_message_signature, encode_message, encode_multi_message_signature,
-    encode_public_key, encode_signature, encode_single_message_signature, read_fes,
+    decode_multi_message_signature, decode_multi_message_signature_without_pubkeys,
+    decode_public_key, decode_signature, decode_single_message_signature,
+    decode_single_message_signature_without_pubkeys, encode_public_key, encode_signature,
 };
 
-const MESSAGE_BYTES: usize = MESSAGE_LEN_FE * 4;
-const _: () = assert!(MESSAGE_BYTES == 32);
-
-/// Convert 32 bytes (8 little-endian u32s, each high bit clear) into the
-/// `[KoalaBear; 8]` upstream wants for messages.
-pub(crate) fn message_from_bytes(bytes: &[u8]) -> PyResult<[KoalaBear; MESSAGE_LEN_FE]> {
-    if bytes.len() != MESSAGE_BYTES {
-        return Err(SerializationError::new_err(format!(
+/// Length-check a Python `bytes` message into the fixed array upstream wants.
+/// Any 32 bytes are valid — upstream hashes the raw bytes itself.
+pub(crate) fn message_array(bytes: &[u8]) -> PyResult<[u8; MESSAGE_LEN_BYTES]> {
+    bytes.try_into().map_err(|_| {
+        SerializationError::new_err(format!(
             "message must be exactly {} bytes, got {}",
-            MESSAGE_BYTES,
+            MESSAGE_LEN_BYTES,
             bytes.len()
-        )));
-    }
-    let mut pos = 0;
-    read_fes::<MESSAGE_LEN_FE>(bytes, &mut pos)
+        ))
+    })
 }
 
 pub(crate) fn wrap_pubkeys(pks: &[XmssPublicKey]) -> Vec<PyPublicKey> {
     pks.iter()
         .cloned()
-        .map(|pk| PyPublicKey { inner: Arc::new(pk) })
+        .map(|pk| PyPublicKey {
+            inner: Arc::new(pk),
+        })
         .collect()
+}
+
+pub(crate) fn unwrap_pubkeys(pks: &[PyRef<'_, PyPublicKey>]) -> Vec<XmssPublicKey> {
+    pks.iter().map(|p| (*p.inner).clone()).collect()
 }
 
 fn short_hex(bytes: &[u8]) -> String {
@@ -52,7 +52,12 @@ fn short_hex(bytes: &[u8]) -> String {
     }
 }
 
-#[pyclass(name = "PublicKey", frozen, module = "py_lean_multisig", skip_from_py_object)]
+#[pyclass(
+    name = "PublicKey",
+    frozen,
+    module = "py_lean_multisig",
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub struct PyPublicKey {
     pub(crate) inner: Arc<XmssPublicKey>,
@@ -63,7 +68,9 @@ impl PyPublicKey {
     #[classmethod]
     fn from_bytes(_cls: &Bound<'_, pyo3::types::PyType>, data: &[u8]) -> PyResult<Self> {
         let pk = decode_public_key(data)?;
-        Ok(Self { inner: Arc::new(pk) })
+        Ok(Self {
+            inner: Arc::new(pk),
+        })
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
@@ -91,7 +98,12 @@ impl PyPublicKey {
     }
 }
 
-#[pyclass(name = "Signature", frozen, module = "py_lean_multisig", skip_from_py_object)]
+#[pyclass(
+    name = "Signature",
+    frozen,
+    module = "py_lean_multisig",
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub struct PySignature {
     pub(crate) inner: Arc<XmssSignature>,
@@ -102,7 +114,9 @@ impl PySignature {
     #[classmethod]
     fn from_bytes(_cls: &Bound<'_, pyo3::types::PyType>, data: &[u8]) -> PyResult<Self> {
         let sig = decode_signature(data)?;
-        Ok(Self { inner: Arc::new(sig) })
+        Ok(Self {
+            inner: Arc::new(sig),
+        })
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
@@ -131,11 +145,9 @@ impl PySignature {
     }
 }
 
-// SecretKey isn't serializable: upstream's XmssSecretKey derives only Debug
-// and its fields are pub(crate), so we can't build an encoder. Re-derive
-// across processes by persisting (seed, slot_start, slot_end) and calling
-// keygen() — it's deterministic. slot_start/slot_end are cached here
-// because upstream doesn't expose them.
+// slot_start/slot_end are cached here because upstream's fields are
+// pub(crate). Re-derive a key across processes by persisting
+// (seed, slot_start, slot_end) and calling keygen() — it's deterministic.
 #[pyclass(name = "SecretKey", frozen, module = "py_lean_multisig")]
 pub struct PySecretKey {
     pub(crate) inner: Arc<XmssSecretKey>,
@@ -147,7 +159,9 @@ pub struct PySecretKey {
 impl PySecretKey {
     #[getter]
     fn public_key(&self) -> PyPublicKey {
-        PyPublicKey { inner: Arc::new(self.inner.public_key()) }
+        PyPublicKey {
+            inner: Arc::new(self.inner.public_key()),
+        }
     }
 
     #[getter]
@@ -172,7 +186,7 @@ impl PySecretKey {
 }
 
 /// Many XMSS sigs over one `(message, slot)` aggregated into a single zkVM proof.
-/// Wraps upstream's `TypeOneMultiSignature`.
+/// Wraps upstream's `SingleMessageAggregateSignature`.
 #[pyclass(
     name = "SingleMessageSignature",
     frozen,
@@ -181,7 +195,7 @@ impl PySecretKey {
 )]
 #[derive(Clone)]
 pub struct PySingleMessageSignature {
-    pub(crate) inner: Arc<TypeOneMultiSignature>,
+    pub(crate) inner: Arc<SingleMessageAggregateSignature>,
 }
 
 #[pymethods]
@@ -189,21 +203,44 @@ impl PySingleMessageSignature {
     #[classmethod]
     fn from_bytes(_cls: &Bound<'_, pyo3::types::PyType>, data: &[u8]) -> PyResult<Self> {
         let sig = decode_single_message_signature(data)?;
-        Ok(Self { inner: Arc::new(sig) })
+        Ok(Self {
+            inner: Arc::new(sig),
+        })
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new(py, &encode_single_message_signature(&self.inner))
+        PyBytes::new(py, &self.inner.to_bytes())
+    }
+
+    /// Decode the pubkey-free form; the caller supplies the signer set.
+    /// A set different from the one aggregated fails verification.
+    #[classmethod]
+    fn from_bytes_without_pubkeys(
+        _cls: &Bound<'_, pyo3::types::PyType>,
+        data: &[u8],
+        pubkeys: Vec<PyRef<'_, PyPublicKey>>,
+    ) -> PyResult<Self> {
+        let pks = unwrap_pubkeys(&pubkeys);
+        let sig = decode_single_message_signature_without_pubkeys(data, pks)?;
+        Ok(Self {
+            inner: Arc::new(sig),
+        })
+    }
+
+    /// Compact wire form with the pubkeys stripped (receiver already knows
+    /// the signer set, e.g. from a validator registry).
+    fn to_bytes_without_pubkeys<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.to_bytes_without_pubkeys())
     }
 
     #[getter]
     fn message<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new(py, &encode_message(&self.inner.info.message))
+        PyBytes::new(py, &self.inner.info.core.message)
     }
 
     #[getter]
     fn slot(&self) -> u32 {
-        self.inner.info.slot
+        self.inner.info.core.slot
     }
 
     #[getter]
@@ -214,14 +251,14 @@ impl PySingleMessageSignature {
     fn __repr__(&self) -> String {
         format!(
             "SingleMessageSignature(slot={}, n_signers={})",
-            self.inner.info.slot,
+            self.inner.info.core.slot,
             self.inner.info.pubkeys.len()
         )
     }
 }
 
 /// Bundles n single-message proofs, each potentially over a different
-/// `(message, slot)`. Wraps upstream's `TypeTwoMultiSignature`.
+/// `(message, slot)`. Wraps upstream's `MultiMessageAggregateSignature`.
 #[pyclass(
     name = "MultiMessageSignature",
     frozen,
@@ -230,7 +267,7 @@ impl PySingleMessageSignature {
 )]
 #[derive(Clone)]
 pub struct PyMultiMessageSignature {
-    pub(crate) inner: Arc<TypeTwoMultiSignature>,
+    pub(crate) inner: Arc<MultiMessageAggregateSignature>,
 }
 
 #[pymethods]
@@ -238,11 +275,36 @@ impl PyMultiMessageSignature {
     #[classmethod]
     fn from_bytes(_cls: &Bound<'_, pyo3::types::PyType>, data: &[u8]) -> PyResult<Self> {
         let sig = decode_multi_message_signature(data)?;
-        Ok(Self { inner: Arc::new(sig) })
+        Ok(Self {
+            inner: Arc::new(sig),
+        })
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new(py, &encode_multi_message_signature(&self.inner))
+        PyBytes::new(py, &self.inner.to_bytes())
+    }
+
+    /// Decode the pubkey-free form; the caller supplies one signer set per
+    /// component, in component order.
+    #[classmethod]
+    fn from_bytes_without_pubkeys(
+        _cls: &Bound<'_, pyo3::types::PyType>,
+        data: &[u8],
+        pubkeys_per_component: Vec<Vec<PyRef<'_, PyPublicKey>>>,
+    ) -> PyResult<Self> {
+        let pks: Vec<Vec<XmssPublicKey>> = pubkeys_per_component
+            .iter()
+            .map(|component| unwrap_pubkeys(component))
+            .collect();
+        let sig = decode_multi_message_signature_without_pubkeys(data, pks)?;
+        Ok(Self {
+            inner: Arc::new(sig),
+        })
+    }
+
+    /// Compact wire form with all component pubkeys stripped.
+    fn to_bytes_without_pubkeys<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.to_bytes_without_pubkeys())
     }
 
     #[getter]
@@ -251,7 +313,9 @@ impl PyMultiMessageSignature {
             .info
             .iter()
             .cloned()
-            .map(|info| PyComponentInfo { inner: Arc::new(info) })
+            .map(|info| PyComponentInfo {
+                inner: Arc::new(info),
+            })
             .collect()
     }
 
@@ -260,7 +324,10 @@ impl PyMultiMessageSignature {
     }
 
     fn __repr__(&self) -> String {
-        format!("MultiMessageSignature(n_components={})", self.inner.info.len())
+        format!(
+            "MultiMessageSignature(n_components={})",
+            self.inner.info.len()
+        )
     }
 }
 
@@ -273,19 +340,19 @@ impl PyMultiMessageSignature {
 )]
 #[derive(Clone)]
 pub struct PyComponentInfo {
-    inner: Arc<rec_aggregation::TypeOneInfo>,
+    inner: Arc<rec_aggregation::SingleMessageInfo>,
 }
 
 #[pymethods]
 impl PyComponentInfo {
     #[getter]
     fn message<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new(py, &encode_message(&self.inner.message))
+        PyBytes::new(py, &self.inner.core.message)
     }
 
     #[getter]
     fn slot(&self) -> u32 {
-        self.inner.slot
+        self.inner.core.slot
     }
 
     #[getter]
@@ -296,7 +363,7 @@ impl PyComponentInfo {
     fn __repr__(&self) -> String {
         format!(
             "ComponentInfo(slot={}, n_signers={})",
-            self.inner.slot,
+            self.inner.core.slot,
             self.inner.pubkeys.len()
         )
     }

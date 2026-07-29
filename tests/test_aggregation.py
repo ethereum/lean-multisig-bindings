@@ -1,13 +1,9 @@
-import struct
-
 import pytest
 
 import py_lean_multisig as lm
 
-# Use the same field-element-friendly message format upstream uses for
-# benchmarks: 8 LE u32s with the high bit clear. The exact values don't
-# matter, only that each value is < 2^31.
-MSG = b"".join(struct.pack("<I", i) for i in range(8))
+# Messages are arbitrary 32-byte strings; upstream hashes the raw bytes.
+MSG = bytes(range(32))
 SLOT = 111
 
 
@@ -26,7 +22,7 @@ def _signers(n: int, seed_offset: int = 0):
     sks = [sk for sk, _ in pairs]
     pks = [pk for _, pk in pairs]
     sigs = [
-        lm.sign(sk, MSG, SLOT, rng_seed=bytes([(i + 100 + seed_offset) % 256]) * 32)
+        lm.sign(sk, MSG, SLOT)
         for i, sk in enumerate(sks)
     ]
     return pks, sigs
@@ -101,14 +97,33 @@ def test_single_message_signature_round_trip(prover):
 
 def test_single_message_signature_from_bytes_garbage_raises():
     with pytest.raises(lm.SerializationError):
-        lm.SingleMessageSignature.from_bytes(b"not a valid postcard+lz4 payload")
+        lm.SingleMessageSignature.from_bytes(b"not a valid postcard payload")
 
 
-def test_single_message_signature_from_bytes_wrong_kind_tag_raises():
-    # 0x02 is the multi-message kind; SingleMessageSignature.from_bytes
-    # must reject it instead of trying to decode as single-message.
-    with pytest.raises(lm.SerializationError):
-        lm.SingleMessageSignature.from_bytes(b"\x02" + b"\x00" * 100)
+def test_single_message_signature_pubkey_free_round_trip(prover):
+    """The pubkey-free wire form drops the signer set; the receiver
+    supplies it at decode time (e.g. from a validator registry)."""
+    pks, sigs = _signers(2, seed_offset=99)
+    sorted_pks, agg = prover.aggregate(pks, sigs, MSG, SLOT)
+    compact = agg.to_bytes_without_pubkeys()
+    assert len(compact) < len(agg.to_bytes())
+    agg2 = lm.SingleMessageSignature.from_bytes_without_pubkeys(compact, sorted_pks)
+    assert agg2.to_bytes() == agg.to_bytes()
+
+
+def test_single_message_signature_pubkey_free_wrong_set_fails(prover, verifier):
+    """Decoding with a signer set different from the aggregated one must
+    not verify (binding is via the proof, not the serialized keys)."""
+    pks, sigs = _signers(2, seed_offset=99)
+    sorted_pks, agg = prover.aggregate(pks, sigs, MSG, SLOT)
+    other_pks, _ = _signers(2, seed_offset=199)
+    compact = agg.to_bytes_without_pubkeys()
+    try:
+        forged = lm.SingleMessageSignature.from_bytes_without_pubkeys(compact, other_pks)
+    except lm.SerializationError:
+        return  # rejected at decode — also fine
+    with pytest.raises(lm.VerifyError):
+        verifier.verify(forged.pubkeys, MSG, forged, SLOT)
 
 
 def test_verify_tampered_aggregated_signature_raises(prover, verifier):
@@ -120,9 +135,9 @@ def test_verify_tampered_aggregated_signature_raises(prover, verifier):
     try:
         tampered = lm.SingleMessageSignature.from_bytes(bytes(raw))
     except lm.SerializationError:
-        # If the flipped bit landed in the lz4 prefix, decompression will
-        # fail before we get to the verifier. That's still a rejection of
-        # a tampered signature — pass.
+        # If the flipped bit breaks the postcard structure, decoding fails
+        # before we get to the verifier. That's still a rejection of a
+        # tampered signature — pass.
         return
     with pytest.raises(lm.VerifyError):
         verifier.verify(sorted_pks, MSG, tampered, SLOT)
@@ -138,7 +153,7 @@ def test_verify_wrong_slot_raises(prover, verifier):
 def test_verify_wrong_message_raises(prover, verifier):
     pks, sigs = _signers(4)
     sorted_pks, agg = prover.aggregate(pks, sigs, MSG, SLOT)
-    other_msg = b"".join(struct.pack("<I", 100 + i) for i in range(8))
+    other_msg = bytes(range(100, 132))
     with pytest.raises(lm.VerifyError):
         verifier.verify(sorted_pks, other_msg, agg, SLOT)
 

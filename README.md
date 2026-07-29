@@ -20,7 +20,7 @@ sk, pk = lm.keygen(b"\x00" * 32, 0, 1023)
 
 # Sign and verify (message is 32 bytes)
 msg = b"\x42" * 32
-sig = lm.sign(sk, msg, 5, rng_seed=b"\x99" * 32)  # rng_seed optional
+sig = lm.sign(sk, msg, 5)  # deterministic: randomness derives from the key seed
 lm.verify(pk, msg, sig, 5)
 
 # Serialize/deserialize
@@ -39,7 +39,7 @@ import py_lean_multisig as lm
 msg, slot = b"\x42" * 32, 5
 pairs = [lm.keygen(bytes([i+1])*32, 0, 1023) for i in range(4)]
 pks  = [pk for _, pk in pairs]
-sigs = [lm.sign(sk, msg, slot, rng_seed=bytes([i+100])*32) for i, (sk, _) in enumerate(pairs)]
+sigs = [lm.sign(sk, msg, slot) for sk, _ in pairs]
 
 prover = lm.Prover(log_inv_rate=4)
 verifier = lm.Verifier()
@@ -68,8 +68,7 @@ msg, slot = b"\x42" * 32, 5
 def _signers(seed_offset, n):
     pairs = [lm.keygen(bytes([seed_offset + i]) * 32, 0, 1023) for i in range(n)]
     pks  = [pk for _, pk in pairs]
-    sigs = [lm.sign(sk, msg, slot, rng_seed=bytes([seed_offset + 100 + i]) * 32)
-            for i, (sk, _) in enumerate(pairs)]
+    sigs = [lm.sign(sk, msg, slot) for sk, _ in pairs]
     return pks, sigs
 
 prover   = lm.Prover(log_inv_rate=4)
@@ -144,27 +143,31 @@ sm_b_recovered = prover.split(multi, index=1)
 verifier.verify(sm_b_recovered.pubkeys, msg_b, sm_b_recovered, slot_b)
 ```
 
-## Polymorphic deserialization
+## Pubkey-free serialization
 
-When you receive an aggregated signature whose kind isn't known up front
-(e.g. from a peer):
+`to_bytes()` bundles the signer set into the blob. When the receiver
+already knows the signers (e.g. from a validator registry), the compact
+pubkey-free form drops them from the wire and the receiver supplies them
+at decode time:
 
 ```python
-proof = lm.parse_aggregated(bytes_from_network)
-match proof:
-    case lm.SingleMessageSignature():
-        verifier.verify(proof.pubkeys, proof.message, proof, proof.slot)
-    case lm.MultiMessageSignature():
-        verifier.verify_multi(
-            [(c.pubkeys, c.message, c.slot) for c in proof.components],
-            proof,
-        )
+compact = agg.to_bytes_without_pubkeys()
+agg2 = lm.SingleMessageSignature.from_bytes_without_pubkeys(compact, sorted_pks)
+
+# MultiMessage: one signer set per component, in component order.
+compact_multi = multi.to_bytes_without_pubkeys()
+multi2 = lm.MultiMessageSignature.from_bytes_without_pubkeys(
+    compact_multi,
+    [c.pubkeys for c in multi.components],
+)
 ```
 
-The wire format prepends a 1-byte kind tag (`0x01` = single-message,
-`0x02` = multi-message) so the polymorphic parser dispatches without
-trial-decoding. Typed `from_bytes` (e.g. `SingleMessageSignature.from_bytes`)
-rejects the wrong tag with a clear error.
+A signer set different from the one aggregated fails verification — the
+binding lives in the proof, not the serialized keys.
+
+All byte encodings are upstream's: SSZ for `PublicKey`/`Signature` and
+postcard for the aggregate proofs, so blobs are interchangeable with other
+leanMultisig consumers.
 
 ## Development
 

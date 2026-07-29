@@ -53,15 +53,17 @@ def test_pubkey_bytes_round_trip():
 
 def test_sign_returns_typed_signature():
     sk, _ = lm.keygen(b"\x00" * 32, 0, 7)
-    sig = lm.sign(sk, b"\x11" * 32, 3, rng_seed=b"\x99" * 32)
+    sig = lm.sign(sk, b"\x11" * 32, 3)
     assert isinstance(sig, lm.Signature)
 
 
-def test_sign_deterministic_with_rng_seed():
+def test_sign_deterministic():
+    """Signing derives its randomness from the secret key's seed, so the
+    same (key, message, slot) always yields the same signature."""
     sk, _ = lm.keygen(b"\x00" * 32, 0, 7)
     msg = b"\x11" * 32
-    sig_a = lm.sign(sk, msg, 3, rng_seed=b"\x99" * 32)
-    sig_b = lm.sign(sk, msg, 3, rng_seed=b"\x99" * 32)
+    sig_a = lm.sign(sk, msg, 3)
+    sig_b = lm.sign(sk, msg, 3)
     assert sig_a == sig_b
     assert sig_a.to_bytes() == sig_b.to_bytes()
 
@@ -69,33 +71,35 @@ def test_sign_deterministic_with_rng_seed():
 def test_sign_slot_out_of_range_raises():
     sk, _ = lm.keygen(b"\x00" * 32, 5, 9)
     with pytest.raises(lm.SignError):
-        lm.sign(sk, b"\x00" * 32, 0, rng_seed=b"\x01" * 32)
+        lm.sign(sk, b"\x00" * 32, 0)
     with pytest.raises(lm.SignError):
-        lm.sign(sk, b"\x00" * 32, 10, rng_seed=b"\x01" * 32)
+        lm.sign(sk, b"\x00" * 32, 10)
 
 
 def test_sign_short_message_raises_serialization_error():
     sk, _ = lm.keygen(b"\x00" * 32, 0, 7)
     with pytest.raises(lm.SerializationError):
-        lm.sign(sk, b"\x00" * 31, 0, rng_seed=b"\x01" * 32)
+        lm.sign(sk, b"\x00" * 31, 0)
 
 
-def test_sign_high_bit_set_message_raises():
+def test_sign_accepts_arbitrary_32_bytes():
+    """Messages are raw bytes upstream (it hashes them itself), so any
+    32-byte value is valid — including ones that aren't field elements."""
+    sk, pk = lm.keygen(b"\x00" * 32, 0, 7)
+    msg = b"\xff" * 32
+    sig = lm.sign(sk, msg, 0)
+    assert lm.verify(pk, msg, sig, 0) is None
+
+
+def test_sign_long_message_raises_serialization_error():
     sk, _ = lm.keygen(b"\x00" * 32, 0, 7)
-    bad = b"\xff" * 4 + b"\x00" * 28
     with pytest.raises(lm.SerializationError):
-        lm.sign(sk, bad, 0, rng_seed=b"\x01" * 32)
-
-
-def test_sign_short_rng_seed_raises():
-    sk, _ = lm.keygen(b"\x00" * 32, 0, 7)
-    with pytest.raises(lm.SerializationError):
-        lm.sign(sk, b"\x00" * 32, 0, rng_seed=b"short")
+        lm.sign(sk, b"\x00" * 33, 0)
 
 
 def test_signature_bytes_round_trip():
     sk, _ = lm.keygen(b"\x07" * 32, 0, 7)
-    sig = lm.sign(sk, b"\x22" * 32, 5, rng_seed=b"\xaa" * 32)
+    sig = lm.sign(sk, b"\x22" * 32, 5)
     raw = sig.to_bytes()
     assert isinstance(raw, bytes)
     sig2 = lm.Signature.from_bytes(raw)
@@ -105,21 +109,21 @@ def test_signature_bytes_round_trip():
 def test_verify_round_trip():
     sk, pk = lm.keygen(b"\x00" * 32, 0, 7)
     msg = b"\x22" * 32
-    sig = lm.sign(sk, msg, 5, rng_seed=b"\x01" * 32)
+    sig = lm.sign(sk, msg, 5)
     # Returns None on success
     assert lm.verify(pk, msg, sig, 5) is None
 
 
 def test_verify_tampered_message_raises():
     sk, pk = lm.keygen(b"\x00" * 32, 0, 7)
-    sig = lm.sign(sk, b"\x22" * 32, 5, rng_seed=b"\x01" * 32)
+    sig = lm.sign(sk, b"\x22" * 32, 5)
     with pytest.raises(lm.VerifyError):
         lm.verify(pk, b"\x33" * 32, sig, 5)
 
 
 def test_verify_tampered_slot_raises():
     sk, pk = lm.keygen(b"\x00" * 32, 0, 7)
-    sig = lm.sign(sk, b"\x22" * 32, 5, rng_seed=b"\x01" * 32)
+    sig = lm.sign(sk, b"\x22" * 32, 5)
     with pytest.raises(lm.VerifyError):
         lm.verify(pk, b"\x22" * 32, sig, 4)
 
@@ -127,14 +131,14 @@ def test_verify_tampered_slot_raises():
 def test_verify_wrong_pubkey_raises():
     sk_a, _ = lm.keygen(b"\x00" * 32, 0, 7)
     _, pk_b = lm.keygen(b"\x01" * 32, 0, 7)
-    sig = lm.sign(sk_a, b"\x22" * 32, 5, rng_seed=b"\x01" * 32)
+    sig = lm.sign(sk_a, b"\x22" * 32, 5)
     with pytest.raises(lm.VerifyError):
         lm.verify(pk_b, b"\x22" * 32, sig, 5)
 
 
 def test_verify_short_message_raises_serialization_error():
     sk, pk = lm.keygen(b"\x00" * 32, 0, 7)
-    sig = lm.sign(sk, b"\x22" * 32, 5, rng_seed=b"\x01" * 32)
+    sig = lm.sign(sk, b"\x22" * 32, 5)
     with pytest.raises(lm.SerializationError):
         lm.verify(pk, b"\x22" * 31, sig, 5)
 
@@ -143,7 +147,7 @@ def test_verify_after_bytes_roundtrip():
     """Signature/PublicKey round-tripped through bytes should still verify."""
     sk, pk = lm.keygen(b"\x00" * 32, 0, 7)
     msg = b"\x22" * 32
-    sig = lm.sign(sk, msg, 5, rng_seed=b"\x01" * 32)
+    sig = lm.sign(sk, msg, 5)
     pk2 = lm.PublicKey.from_bytes(pk.to_bytes())
     sig2 = lm.Signature.from_bytes(sig.to_bytes())
     assert lm.verify(pk2, msg, sig2, 5) is None

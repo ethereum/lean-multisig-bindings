@@ -1,16 +1,14 @@
-"""Tests for the MultiMessage API: Prover.merge / split, Verifier.verify_multi,
-and the polymorphic lm.parse_aggregated() deserializer."""
-import struct
-
+"""Tests for the MultiMessage API: Prover.merge / split and
+Verifier.verify_multi."""
 import pytest
 
 import py_lean_multisig as lm
 
 # Three distinct (message, slot) pairs — each gets its own SingleMessage.
 SLOT_A, SLOT_B, SLOT_C = 50, 60, 70
-MSG_A = b"".join(struct.pack("<I", i) for i in range(8))
-MSG_B = b"".join(struct.pack("<I", 100 + i) for i in range(8))
-MSG_C = b"".join(struct.pack("<I", 200 + i) for i in range(8))
+MSG_A = bytes(range(32))
+MSG_B = bytes(range(100, 132))
+MSG_C = bytes(range(200, 232))
 
 
 def _signers(n: int, msg: bytes, slot: int, seed_offset: int = 0):
@@ -19,10 +17,7 @@ def _signers(n: int, msg: bytes, slot: int, seed_offset: int = 0):
         for i in range(n)
     ]
     pks = [pk for _, pk in pairs]
-    sigs = [
-        lm.sign(sk, msg, slot, rng_seed=bytes([(i + 100 + seed_offset) % 256]) * 32)
-        for i, (sk, _) in enumerate(pairs)
-    ]
+    sigs = [lm.sign(sk, msg, slot) for sk, _ in pairs]
     return pks, sigs
 
 
@@ -128,38 +123,23 @@ def test_promote_single_to_multi_with_one_component(prover, verifier, three_sing
 
 def test_multi_message_round_trip(merged):
     raw = merged.to_bytes()
-    assert raw[0] == 0x02  # kind tag = multi-message
     decoded = lm.MultiMessageSignature.from_bytes(raw)
     assert decoded.to_bytes() == raw
     assert len(decoded) == len(merged)
 
 
-def test_multi_message_from_bytes_wrong_kind_tag_raises(prover, three_singles):
-    """A SingleMessage payload (tag 0x01) must be rejected by
-    MultiMessageSignature.from_bytes."""
-    a, _, _ = three_singles
+def test_multi_message_from_bytes_garbage_raises():
     with pytest.raises(lm.SerializationError):
-        lm.MultiMessageSignature.from_bytes(a.to_bytes())
+        lm.MultiMessageSignature.from_bytes(b"not a valid postcard payload")
 
 
-def test_parse_aggregated_dispatches_to_single_message(prover, three_singles):
-    a, _, _ = three_singles
-    parsed = lm.parse_aggregated(a.to_bytes())
-    assert isinstance(parsed, lm.SingleMessageSignature)
-    assert parsed.to_bytes() == a.to_bytes()
-
-
-def test_parse_aggregated_dispatches_to_multi_message(merged):
-    parsed = lm.parse_aggregated(merged.to_bytes())
-    assert isinstance(parsed, lm.MultiMessageSignature)
-    assert parsed.to_bytes() == merged.to_bytes()
-
-
-def test_parse_aggregated_unknown_kind_tag_raises():
-    with pytest.raises(lm.SerializationError):
-        lm.parse_aggregated(b"\xff" + b"\x00" * 100)
-
-
-def test_parse_aggregated_empty_raises():
-    with pytest.raises(lm.SerializationError):
-        lm.parse_aggregated(b"")
+def test_multi_message_pubkey_free_round_trip(merged):
+    """The pubkey-free wire form drops every component's signer set; the
+    receiver supplies them at decode time, in component order."""
+    compact = merged.to_bytes_without_pubkeys()
+    assert len(compact) < len(merged.to_bytes())
+    pubkeys_per_component = [c.pubkeys for c in merged.components]
+    decoded = lm.MultiMessageSignature.from_bytes_without_pubkeys(
+        compact, pubkeys_per_component
+    )
+    assert decoded.to_bytes() == merged.to_bytes()

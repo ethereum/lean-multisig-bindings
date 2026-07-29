@@ -18,7 +18,6 @@ __all__ = [
     "keygen",
     "sign",
     "verify",
-    "parse_aggregated",
     "LeanMultisigError",
     "KeygenError",
     "SignError",
@@ -68,10 +67,19 @@ class Signature:
 @final
 class SingleMessageSignature:
     """Many XMSS sigs over one (message, slot) aggregated into a single proof.
-    Wraps upstream's TypeOneMultiSignature."""
+    Wraps upstream's SingleMessageAggregateSignature."""
     @classmethod
     def from_bytes(cls, data: bytes) -> "SingleMessageSignature": ...
     def to_bytes(self) -> bytes: ...
+    @classmethod
+    def from_bytes_without_pubkeys(
+        cls, data: bytes, pubkeys: list[PublicKey]
+    ) -> "SingleMessageSignature":
+        """Decode the pubkey-free wire form; the caller supplies the signer
+        set (e.g. from a validator registry). A set different from the one
+        aggregated fails verification."""
+        ...
+    def to_bytes_without_pubkeys(self) -> bytes: ...
     @property
     def message(self) -> bytes: ...
     @property
@@ -83,10 +91,18 @@ class SingleMessageSignature:
 @final
 class MultiMessageSignature:
     """Bundles n SingleMessageSignatures, each potentially over a different
-    (message, slot). Wraps upstream's TypeTwoMultiSignature."""
+    (message, slot). Wraps upstream's MultiMessageAggregateSignature."""
     @classmethod
     def from_bytes(cls, data: bytes) -> "MultiMessageSignature": ...
     def to_bytes(self) -> bytes: ...
+    @classmethod
+    def from_bytes_without_pubkeys(
+        cls, data: bytes, pubkeys_per_component: list[list[PublicKey]]
+    ) -> "MultiMessageSignature":
+        """Decode the pubkey-free wire form; the caller supplies one signer
+        set per component, in component order."""
+        ...
+    def to_bytes_without_pubkeys(self) -> bytes: ...
     @property
     def components(self) -> list["ComponentInfo"]: ...
     def __len__(self) -> int: ...
@@ -143,23 +159,12 @@ class Verifier:
     ) -> None: ...
 
 def keygen(seed: bytes, slot_start: int, slot_end: int) -> tuple[SecretKey, PublicKey]: ...
-def sign(
-    sk: SecretKey,
-    message: bytes,
-    slot: int,
-    *,
-    rng_seed: bytes | None = ...,
-) -> Signature: ...
-def verify(pk: PublicKey, message: bytes, sig: Signature, slot: int) -> None: ...
-
-def parse_aggregated(
-    data: bytes,
-) -> SingleMessageSignature | MultiMessageSignature:
-    """Decode an aggregated signature whose kind isn't known up front
-    (e.g. received from an untrusted source). Reads the leading kind tag
-    (0x01 / 0x02) and returns the matching concrete class. Raises
-    SerializationError on a missing or unknown tag, or a malformed body."""
+def sign(sk: SecretKey, message: bytes, slot: int) -> Signature:
+    """Signing is deterministic: the encoding randomness is derived from
+    the secret key's seed, so the same (key, message, slot) always yields
+    the same signature."""
     ...
+def verify(pk: PublicKey, message: bytes, sig: Signature, slot: int) -> None: ...
 
 class LeanMultisigError(Exception): ...
 class KeygenError(LeanMultisigError): ...
