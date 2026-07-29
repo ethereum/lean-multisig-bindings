@@ -1,6 +1,7 @@
 """Tests for the MultiMessage API: Prover.merge / split and
 Verifier.verify_multi."""
 import pytest
+from conftest import make_signers
 
 import py_lean_multisig as lm
 
@@ -11,23 +12,18 @@ MSG_B = bytes(range(100, 132))
 MSG_C = bytes(range(200, 232))
 
 
-def _signers(n: int, msg: bytes, slot: int, seed_offset: int = 0):
-    pairs = [
-        lm.keygen(bytes([(i + 1 + seed_offset) % 256]) * 32, slot, slot + 1)
-        for i in range(n)
-    ]
-    pks = [pk for _, pk in pairs]
-    sigs = [lm.sign(sk, msg, slot) for sk, _ in pairs]
-    return pks, sigs
+def _components(multi):
+    """The (pubkeys, message, slot) triples verify_multi expects."""
+    return [(c.pubkeys, c.message, c.slot) for c in multi.components]
 
 
 @pytest.fixture(scope="module")
 def three_singles(prover):
     """Three SingleMessage proofs over disjoint (message, slot) pairs.
     Shared so the merge/split tests don't pay aggregate cost three times."""
-    a_pks, a_sigs = _signers(2, MSG_A, SLOT_A, seed_offset=0)
-    b_pks, b_sigs = _signers(2, MSG_B, SLOT_B, seed_offset=10)
-    c_pks, c_sigs = _signers(2, MSG_C, SLOT_C, seed_offset=20)
+    a_pks, a_sigs = make_signers(2, MSG_A, SLOT_A, seed_offset=0)
+    b_pks, b_sigs = make_signers(2, MSG_B, SLOT_B, seed_offset=10)
+    c_pks, c_sigs = make_signers(2, MSG_C, SLOT_C, seed_offset=20)
     _, a = prover.aggregate(a_pks, a_sigs, MSG_A, SLOT_A)
     _, b = prover.aggregate(b_pks, b_sigs, MSG_B, SLOT_B)
     _, c = prover.aggregate(c_pks, c_sigs, MSG_C, SLOT_C)
@@ -63,32 +59,32 @@ def test_merge_empty_raises_value_error(prover):
 
 
 def test_verify_multi_succeeds(verifier, merged):
-    components = [(c.pubkeys, c.message, c.slot) for c in merged.components]
+    components = _components(merged)
     assert verifier.verify_multi(components, merged) is None
 
 
 def test_verify_multi_wrong_length_raises(verifier, merged):
-    components = [(c.pubkeys, c.message, c.slot) for c in merged.components]
+    components = _components(merged)
     with pytest.raises(lm.VerifyError):
         verifier.verify_multi(components[:2], merged)
 
 
 def test_verify_multi_wrong_message_raises(verifier, merged):
-    components = [(c.pubkeys, c.message, c.slot) for c in merged.components]
+    components = _components(merged)
     components[1] = (components[1][0], MSG_C, components[1][2])  # B's slot, C's msg
     with pytest.raises(lm.VerifyError):
         verifier.verify_multi(components, merged)
 
 
 def test_verify_multi_wrong_slot_raises(verifier, merged):
-    components = [(c.pubkeys, c.message, c.slot) for c in merged.components]
+    components = _components(merged)
     components[0] = (components[0][0], components[0][1], components[0][2] + 1)
     with pytest.raises(lm.VerifyError):
         verifier.verify_multi(components, merged)
 
 
 def test_verify_multi_wrong_pubkeys_raises(verifier, merged):
-    components = [(c.pubkeys, c.message, c.slot) for c in merged.components]
+    components = _components(merged)
     # Swap pubkeys between components 0 and 1.
     swapped = (components[1][0], components[0][1], components[0][2])
     components[0] = swapped
@@ -136,10 +132,11 @@ def test_multi_message_from_bytes_garbage_raises():
 def test_multi_message_pubkey_free_round_trip(merged):
     """The pubkey-free wire form drops every component's signer set; the
     receiver supplies them at decode time, in component order."""
+    raw = merged.to_bytes()
     compact = merged.to_bytes_without_pubkeys()
-    assert len(compact) < len(merged.to_bytes())
+    assert len(compact) < len(raw)
     pubkeys_per_component = [c.pubkeys for c in merged.components]
     decoded = lm.MultiMessageSignature.from_bytes_without_pubkeys(
         compact, pubkeys_per_component
     )
-    assert decoded.to_bytes() == merged.to_bytes()
+    assert decoded.to_bytes() == raw

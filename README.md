@@ -121,7 +121,8 @@ import py_lean_multisig as lm
 
 prover, verifier = lm.Prover(log_inv_rate=4), lm.Verifier()
 
-# Build one SingleMessage per (message, slot)
+# Build one SingleMessage per (message, slot); each (pks_*, sigs_*)
+# batch is produced as in the aggregation examples above.
 _, sm_a = prover.aggregate(pks_a, sigs_a, msg_a, slot_a)
 _, sm_b = prover.aggregate(pks_b, sigs_b, msg_b, slot_b)
 _, sm_c = prover.aggregate(pks_c, sigs_c, msg_c, slot_c)
@@ -131,16 +132,19 @@ multi = prover.merge([sm_a, sm_b, sm_c])
 assert isinstance(multi, lm.MultiMessageSignature)
 assert len(multi) == 3
 
-# Verify: caller passes (pks, msg, slot) for each component, in the
-# same order the proof binds them.
+# Verify: pass the (pks, msg, slot) you expect each component to be
+# bound to, in component order. These must come from your own context
+# (the block body, a validator registry) — reading them back off
+# `multi.components` would only prove the signature is internally
+# consistent, not that it says what you think it says.
 verifier.verify_multi(
-    [(c.pubkeys, c.message, c.slot) for c in multi.components],
+    [(pks_a, msg_a, slot_a), (pks_b, msg_b, slot_b), (pks_c, msg_c, slot_c)],
     multi,
 )
 
 # Recover one component as a standalone SingleMessage (1 zkVM op).
 sm_b_recovered = prover.split(multi, index=1)
-verifier.verify(sm_b_recovered.pubkeys, msg_b, sm_b_recovered, slot_b)
+verifier.verify(pks_b, msg_b, sm_b_recovered, slot_b)
 ```
 
 ## Pubkey-free serialization

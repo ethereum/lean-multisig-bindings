@@ -14,7 +14,7 @@ dependencies = [
 [[package]]
 name = "air"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "field",
  "koala-bear",
@@ -382,7 +382,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 [[package]]
 name = "backend"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "air",
  "fiat-shamir",
@@ -928,7 +928,7 @@ dependencies = [
 [[package]]
 name = "fiat-shamir"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "field",
  "koala-bear",
@@ -941,7 +941,7 @@ dependencies = [
 [[package]]
 name = "field"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "paste",
  "rand 0.10.1",
@@ -1347,7 +1347,7 @@ dependencies = [
 [[package]]
 name = "koala-bear"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "field",
  "paste",
@@ -1380,7 +1380,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "lean_compiler"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "backend",
  "include_dir",
@@ -1394,7 +1394,7 @@ dependencies = [
 [[package]]
 name = "lean_prover"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "backend",
  "lean_compiler",
@@ -1409,7 +1409,7 @@ dependencies = [
 [[package]]
 name = "lean_vm"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "backend",
  "tracing",
@@ -1542,7 +1542,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "parallel"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "system-info",
 ]
@@ -1643,7 +1643,7 @@ dependencies = [
 [[package]]
 name = "poly"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "field",
  "koala-bear",
@@ -1940,7 +1940,7 @@ dependencies = [
 [[package]]
 name = "rec_aggregation"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "backend",
  "include_dir",
@@ -2337,7 +2337,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "sub_protocols"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "backend",
  "lean_vm",
@@ -2353,7 +2353,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sumcheck"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "air",
  "fiat-shamir",
@@ -2368,7 +2368,7 @@ dependencies = [
 [[package]]
 name = "symetric"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "field",
  "koala-bear",
@@ -2412,7 +2412,7 @@ dependencies = [
 [[package]]
 name = "system-info"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "libc",
 ]
@@ -2658,7 +2658,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "utils"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "parallel",
  "serde",
@@ -2784,7 +2784,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "fiat-shamir",
  "field",
@@ -3005,7 +3005,7 @@ dependencies = [
 [[package]]
 name = "xmss"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "backend",
  "ethereum_ssz",
@@ -3057,7 +3057,7 @@ dependencies = [
 [[package]]
 name = "zk-alloc"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/leanMultisig.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
+source = "git+https://github.com/leanEthereum/leanVM.git?rev=380da82c330eac2841252a655a86ea48ec173bb6#380da82c330eac2841252a655a86ea48ec173bb6"
 dependencies = [
  "libc",
  "parallel",

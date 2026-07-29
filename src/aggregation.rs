@@ -7,26 +7,29 @@ use pyo3::prelude::*;
 use rec_aggregation::{
     aggregate_single_message_signatures, init_aggregation_bytecode,
     merge_single_message_aggregates, split_multi_message_aggregate, verify_multi_message_aggregate,
-    verify_single_message_aggregate, SingleMessageAggregateSignature, MAX_RECURSIONS,
+    verify_single_message_aggregate, SingleMessageAggregateSignature,
 };
 use xmss::{XmssPublicKey, XmssSignature};
 
-use crate::error::{AggregationError, VerifyError};
+use crate::error::{aggregation_to_py_err, VerifyError};
 use crate::types::{
     message_array, wrap_pubkeys, PyMultiMessageSignature, PyPublicKey, PySignature,
     PySingleMessageSignature,
 };
 
-/// True iff `passed`, sorted by `XmssPublicKey::cmp`, equals `expected`.
-/// `expected` is assumed already sorted (upstream invariant on
+/// True iff `passed`, canonicalized the way upstream canonicalizes signer
+/// sets (sorted by `XmssPublicKey::cmp`, deduplicated), equals `expected`.
+/// `expected` is assumed already canonical (upstream invariant on
 /// `SingleMessageInfo::pubkeys`).
 fn pubkeys_match_sorted(passed: &[PyRef<'_, PyPublicKey>], expected: &[XmssPublicKey]) -> bool {
-    if passed.len() != expected.len() {
-        return false;
-    }
-    let mut sorted: Vec<&XmssPublicKey> = passed.iter().map(|p| &*p.inner).collect();
-    sorted.sort();
-    sorted.iter().zip(expected.iter()).all(|(a, b)| **a == *b)
+    let mut canonical: Vec<&XmssPublicKey> = passed.iter().map(|p| &*p.inner).collect();
+    canonical.sort();
+    canonical.dedup();
+    canonical.len() == expected.len()
+        && canonical
+            .iter()
+            .zip(expected.iter())
+            .all(|(a, b)| **a == *b)
 }
 
 /// Validate that the caller-passed `(message, slot, pubkeys)` triple matches
@@ -124,7 +127,7 @@ impl PyProver {
                     log_inv_rate,
                 )
             })
-            .map_err(|e| AggregationError::new_err(format!("aggregation failed: {:?}", e)))?;
+            .map_err(aggregation_to_py_err)?;
 
         let py_pks = wrap_pubkeys(&result.info.pubkeys);
         Ok((
@@ -141,24 +144,12 @@ impl PyProver {
         py: Python<'_>,
         signatures: Vec<PyRef<'_, PySingleMessageSignature>>,
     ) -> PyResult<PyMultiMessageSignature> {
-        if signatures.is_empty() {
-            return Err(PyValueError::new_err(
-                "merge() requires at least one signature",
-            ));
-        }
-        if signatures.len() > MAX_RECURSIONS {
-            return Err(PyValueError::new_err(format!(
-                "merge() supports at most {} signatures, got {}",
-                MAX_RECURSIONS,
-                signatures.len()
-            )));
-        }
         let owned: Vec<SingleMessageAggregateSignature> =
             signatures.iter().map(|s| (*s.inner).clone()).collect();
         let log_inv_rate = self.log_inv_rate;
         let result = py
             .detach(move || merge_single_message_aggregates(owned, log_inv_rate))
-            .map_err(|e| AggregationError::new_err(format!("merge failed: {:?}", e)))?;
+            .map_err(aggregation_to_py_err)?;
         Ok(PyMultiMessageSignature {
             inner: Arc::new(result),
         })
@@ -171,15 +162,6 @@ impl PyProver {
         agg: &PyMultiMessageSignature,
         index: usize,
     ) -> PyResult<PySingleMessageSignature> {
-        let n = agg.inner.info.len();
-        if index >= n {
-            return Err(PyValueError::new_err(format!(
-                "split index {} out of bounds (signature has {} component{})",
-                index,
-                n,
-                if n == 1 { "" } else { "s" }
-            )));
-        }
         // Deep clone (multi-MB): split_multi_message_aggregate takes ownership
         // and we share the Arc with Python — contrast with verify_multi's
         // Arc::clone.
@@ -187,7 +169,7 @@ impl PyProver {
         let log_inv_rate = self.log_inv_rate;
         let result = py
             .detach(move || split_multi_message_aggregate(owned, index, log_inv_rate))
-            .map_err(|e| AggregationError::new_err(format!("split failed: {:?}", e)))?;
+            .map_err(aggregation_to_py_err)?;
         Ok(PySingleMessageSignature {
             inner: Arc::new(result),
         })
@@ -220,7 +202,7 @@ impl PyVerifier {
         let inner = Arc::clone(&agg.inner);
         py.detach(move || verify_single_message_aggregate(&inner))
             .map_err(|e| {
-                VerifyError::new_err(format!("aggregated signature verification failed: {:?}", e))
+                VerifyError::new_err(format!("aggregated signature verification failed: {e}"))
             })?;
         Ok(())
     }
@@ -253,9 +235,7 @@ impl PyVerifier {
 
         let inner = Arc::clone(&agg.inner);
         py.detach(move || verify_multi_message_aggregate(&inner))
-            .map_err(|e| {
-                VerifyError::new_err(format!("multi-message verification failed: {:?}", e))
-            })?;
+            .map_err(|e| VerifyError::new_err(format!("multi-message verification failed: {e}")))?;
         Ok(())
     }
 }

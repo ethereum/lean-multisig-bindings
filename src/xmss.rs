@@ -14,13 +14,9 @@ pub fn keygen(seed: &[u8], slot_start: u32, slot_end: u32) -> PyResult<(PySecret
     let seed_arr: [u8; 32] = seed.try_into().map_err(|_| {
         SerializationError::new_err(format!("seed must be 32 bytes, got {}", seed.len()))
     })?;
-    if slot_end < slot_start {
-        return Err(KeygenError::new_err(format!(
-            "invalid slot range: start={}, end={}",
-            slot_start, slot_end
-        )));
-    }
-    let num_active_slots = u64::from(slot_end) - u64::from(slot_start) + 1;
+    // slot_end < slot_start yields 0 active slots, which upstream rejects as
+    // InvalidRange — one error path for every bad range.
+    let num_active_slots = (u64::from(slot_end) + 1).saturating_sub(u64::from(slot_start));
     let (pk, sk) = xmss_key_gen_from_seed(seed_arr, u64::from(slot_start), num_active_slots)
         .map_err(|e| match e {
             XmssKeyGenError::InvalidRange => KeygenError::new_err(format!(
@@ -33,8 +29,6 @@ pub fn keygen(seed: &[u8], slot_start: u32, slot_end: u32) -> PyResult<(PySecret
     };
     let py_sk = PySecretKey {
         inner: Arc::new(sk),
-        slot_start,
-        slot_end,
     };
     Ok((py_sk, py_pk))
 }
@@ -46,10 +40,15 @@ pub fn keygen(seed: &[u8], slot_start: u32, slot_end: u32) -> PyResult<(PySecret
 pub fn sign(sk: &PySecretKey, message: &[u8], slot: u32) -> PyResult<PySignature> {
     let msg = message_array(message)?;
     let sig = xmss_sign(&sk.inner, slot, &msg).map_err(|e| match e {
-        XmssSignatureError::SlotOutOfRange => SignError::new_err(format!(
-            "slot {} not in key range [{}, {}]",
-            slot, sk.slot_start, sk.slot_end
-        )),
+        XmssSignatureError::SlotOutOfRange => {
+            let slots = sk.inner.activation_slots();
+            SignError::new_err(format!(
+                "slot {} not in key range [{}, {}]",
+                slot,
+                slots.start(),
+                slots.end()
+            ))
+        }
         XmssSignatureError::EncodingAttemptsExceeded => SignError::new_err(e.to_string()),
     })?;
     Ok(PySignature {
