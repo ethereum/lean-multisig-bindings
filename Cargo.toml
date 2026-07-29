@@ -14,10 +14,10 @@ crate-type = ["cdylib"]
 # build/check work normally without the extension-module link rules.
 pyo3 = { version = "0.28.3" }
 
-xmss            = { git = "https://github.com/leanEthereum/leanVM.git", rev = "380da82c330eac2841252a655a86ea48ec173bb6" }
-backend         = { git = "https://github.com/leanEthereum/leanVM.git", rev = "380da82c330eac2841252a655a86ea48ec173bb6" }
-rec_aggregation = { git = "https://github.com/leanEthereum/leanVM.git", rev = "380da82c330eac2841252a655a86ea48ec173bb6" }
-lean_vm         = { git = "https://github.com/leanEthereum/leanVM.git", rev = "380da82c330eac2841252a655a86ea48ec173bb6" }
+xmss            = { git = "https://github.com/leanEthereum/leanVM.git", tag = "v0.9" }
+backend         = { git = "https://github.com/leanEthereum/leanVM.git", tag = "v0.9" }
+rec_aggregation = { git = "https://github.com/leanEthereum/leanVM.git", tag = "v0.9" }
+lean_vm         = { git = "https://github.com/leanEthereum/leanVM.git", tag = "v0.9" }
 
 hex = "0.4"
 ssz = { package = "ethereum_ssz", version = "0.10" }
