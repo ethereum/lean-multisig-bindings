@@ -1,5 +1,5 @@
 [workspace]
-members = ["bindings/python", "bindings/native"]
+members = ["bindings/python", "bindings/native", "bindings/node"]
 resolver = "2"
 
 [workspace.dependencies]
