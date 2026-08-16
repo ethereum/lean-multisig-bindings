@@ -13,4 +13,4 @@ crate-type = ["cdylib"]
 # in pyproject.toml. Keeping it out of the dependency line lets cargo
 # build/check work normally without the extension-module link rules.
 pyo3 = { version = "0.28.3" }
-lean_multisig_api = { git = "https://github.com/kevaundray/leanVM.git", rev = "aed646200cf5ae3199c25c61f2bfe094582678ae" }
+lean_multisig_api = { workspace = true }

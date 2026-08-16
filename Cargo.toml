@@ -1,6 +1,9 @@
 [workspace]
-members = ["bindings/python"]
+members = ["bindings/python", "bindings/native"]
 resolver = "2"
+
+[workspace.dependencies]
+lean_multisig_api = { git = "https://github.com/kevaundray/leanVM.git", rev = "aed646200cf5ae3199c25c61f2bfe094582678ae" }
 
 [profile.release]
 lto = "thin"
