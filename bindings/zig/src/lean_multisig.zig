@@ -277,12 +277,12 @@ fn takeBuffer(allocator: std.mem.Allocator, buffer: c.lms_buffer) ![]u8 {
     return allocator.dupe(u8, data[0..buffer.len]);
 }
 
-fn bytesPtr(data: []const u8) ?[*c]const u8 {
-    return if (data.len == 0) null else data.ptr;
+fn bytesPtr(data: []const u8) [*c]const u8 {
+    return if (data.len == 0) @ptrFromInt(0) else data.ptr;
 }
 
-fn keysPtr(keys: []const PublicKey) ?[*c]const u8 {
-    return if (keys.len == 0) null else @ptrCast(keys.ptr);
+fn keysPtr(keys: []const PublicKey) [*c]const u8 {
+    return if (keys.len == 0) @ptrFromInt(0) else @ptrCast(keys.ptr);
 }
 
 fn splitKeys(allocator: std.mem.Allocator, data: []const u8) ![]PublicKey {
@@ -305,14 +305,14 @@ fn encodeGroups(allocator: std.mem.Allocator, groups: []const ClaimSigners) ![]u
     errdefer allocator.free(result);
     @memcpy(result[0..4], "LMCG");
     result[4] = 1;
-    std.mem.writeInt(u32, result[5..9], @intCast(groups.len), .little);
+    putU32(result, 5, @intCast(groups.len));
     var cursor: usize = 9;
     for (groups) |group| {
         @memcpy(result[cursor .. cursor + 32], group.claim.message[0..]);
         cursor += 32;
-        std.mem.writeInt(u32, result[cursor .. cursor + 4], group.claim.slot, .little);
+        putU32(result, cursor, group.claim.slot);
         cursor += 4;
-        std.mem.writeInt(u32, result[cursor .. cursor + 4], @intCast(group.signers.len), .little);
+        putU32(result, cursor, @intCast(group.signers.len));
         cursor += 4;
         for (group.signers) |signer| {
             @memcpy(result[cursor .. cursor + 32], signer[0..]);
@@ -352,9 +352,19 @@ fn decodeGroups(allocator: std.mem.Allocator, data: []const u8) !ClaimGroups {
 
 fn takeU32(data: []const u8, cursor: *usize) !u32 {
     if (cursor.* > data.len or data.len - cursor.* < 4) return error.InvalidNativeEncoding;
-    const value = std.mem.readInt(u32, data[cursor.* .. cursor.* + 4], .little);
+    const value = @as(u32, data[cursor.*]) |
+        (@as(u32, data[cursor.* + 1]) << 8) |
+        (@as(u32, data[cursor.* + 2]) << 16) |
+        (@as(u32, data[cursor.* + 3]) << 24);
     cursor.* += 4;
     return value;
+}
+
+fn putU32(data: []u8, cursor: usize, value: u32) void {
+    data[cursor] = @truncate(value);
+    data[cursor + 1] = @truncate(value >> 8);
+    data[cursor + 2] = @truncate(value >> 16);
+    data[cursor + 3] = @truncate(value >> 24);
 }
 
 fn take32(data: []const u8, cursor: *usize) ![32]u8 {
