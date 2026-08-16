@@ -1,28 +1,6 @@
-[package]
-name = "py-lean-multisig"
-version = "0.4.0"
-edition = "2021"
+[workspace]
+members = ["bindings/python"]
 resolver = "2"
-
-[lib]
-name = "py_lean_multisig"
-crate-type = ["cdylib"]
-
-[dependencies]
-# pyo3/extension-module is enabled by maturin via [tool.maturin].features
-# in pyproject.toml. Keeping it out of the dependency line lets cargo
-# build/check work normally without the extension-module link rules.
-pyo3 = { version = "0.28.3" }
-
-xmss            = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-backend         = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-rec_aggregation = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-lean_vm         = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-
-hex      = "0.4"
-rand     = "0.10"
-postcard = { version = "1", features = ["alloc"] }
-serde    = { version = "1", features = ["derive"] }
 
 [profile.release]
 lto = "thin"

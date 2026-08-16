@@ -41,7 +41,12 @@ impl PyProver {
         signatures: Vec<PyRef<'_, PySignature>>,
         message: &[u8],
         slot: u32,
-        children: Option<Vec<(Vec<PyRef<'_, PyPublicKey>>, PyRef<'_, PyAggregatedSignature>)>>,
+        children: Option<
+            Vec<(
+                Vec<PyRef<'_, PyPublicKey>>,
+                PyRef<'_, PyAggregatedSignature>,
+            )>,
+        >,
     ) -> PyResult<(Vec<PyPublicKey>, PyAggregatedSignature)> {
         if pub_keys.len() != signatures.len() {
             return Err(PyValueError::new_err(format!(
@@ -74,13 +79,13 @@ impl PyProver {
 
         let log_inv_rate = self.log_inv_rate;
         let (pks_out, agg) = py
-            .detach(|| {
-                xmss_aggregate(&children_refs, raw_xmss, &msg_fe, slot, log_inv_rate)
-            })
+            .detach(|| xmss_aggregate(&children_refs, raw_xmss, &msg_fe, slot, log_inv_rate))
             .map_err(|e| AggregationError::new_err(format!("aggregation failed: {:?}", e)))?;
         let py_pks: Vec<PyPublicKey> = pks_out
             .into_iter()
-            .map(|pk| PyPublicKey { inner: Arc::new(pk) })
+            .map(|pk| PyPublicKey {
+                inner: Arc::new(pk),
+            })
             .collect();
         Ok((
             py_pks,
@@ -113,9 +118,10 @@ impl PyVerifier {
         let msg_fe = message_from_bytes(message)?;
         let pks: Vec<XmssPublicKey> = pub_keys.iter().map(|p| (*p.inner).clone()).collect();
         let agg_inner = agg.inner.clone();
-        py.detach(|| xmss_verify_aggregation(&pks, &agg_inner, &msg_fe, slot)).map_err(
-            |e| VerifyError::new_err(format!("aggregated signature verification failed: {:?}", e)),
-        )?;
+        py.detach(|| xmss_verify_aggregation(&pks, &agg_inner, &msg_fe, slot))
+            .map_err(|e| {
+                VerifyError::new_err(format!("aggregated signature verification failed: {:?}", e))
+            })?;
         Ok(())
     }
 }

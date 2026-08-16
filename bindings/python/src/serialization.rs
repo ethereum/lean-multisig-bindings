@@ -158,9 +158,6 @@ pub fn encode_aggregated_signature(agg: &AggregatedXMSS) -> Vec<u8> {
 }
 
 pub fn decode_aggregated_signature(bytes: &[u8]) -> PyResult<AggregatedXMSS> {
-    AggregatedXMSS::deserialize(bytes).ok_or_else(|| {
-        SerializationError::new_err(
-            "failed to decode AggregatedSignature",
-        )
-    })
+    AggregatedXMSS::deserialize(bytes)
+        .ok_or_else(|| SerializationError::new_err("failed to decode AggregatedSignature"))
 }
