@@ -1,4 +1,4 @@
-use lean_multisig_java_native::{
+use lean_multisig_native::{
     lms_buffer_free, lms_secret_key_destroy, lms_secret_key_from_seed, lms_secret_key_sign,
     lms_setup, lms_signature_destroy, lms_signature_to_bytes, LmsBuffer,
 };
@@ -7,7 +7,7 @@ use std::ptr;
 const OK: i32 = 0;
 
 #[test]
-fn c_abi_signs_and_serializes_a_claim() {
+fn shared_native_abi_signs_and_serializes_a_claim() {
     std::thread::Builder::new()
         .name("native-abi-test".to_owned())
         .stack_size(32 * 1024 * 1024)

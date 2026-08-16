@@ -1,13 +1,13 @@
 /*
- * Private ABI between the Java 25 FFM wrapper and its Rust implementation.
+ * Internal ABI between managed-language wrappers and the Rust implementation.
  *
- * This header is documentation for the FFM layouts, not a supported public C binding. Every
+ * This header documents this internal ABI; it is not a supported public C binding. Every
  * non-empty input range must point to readable memory. Every output pointer must be writable.
  * Handles are opaque and must be destroyed exactly once with their matching destroy function.
  * Buffers returned through lms_buffer must be released with lms_buffer_free exactly once.
  */
-#ifndef LEAN_MULTISIG_JAVA_H
-#define LEAN_MULTISIG_JAVA_H
+#ifndef LEAN_MULTISIG_NATIVE_H
+#define LEAN_MULTISIG_NATIVE_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -39,7 +39,7 @@ int32_t lms_signature_verified_signers(lms_signature *signature, const uint8_t *
 int32_t lms_signature_verify(lms_signature *signature, const uint8_t *signers, size_t signer_count, const uint8_t *message, size_t message_len, uint32_t slot);
 void lms_signature_destroy(lms_signature *signature);
 
-/* Context is the Java wrapper's private LMCG-v1 binary encoding of ClaimSigners values. */
+/* Context is this bridge's private LMCG-v1 binary encoding of ClaimSigners values. */
 int32_t lms_multi_claim_proof_merge(lms_signature *const *signatures, size_t count, lms_multi_claim_proof **out);
 int32_t lms_multi_claim_proof_from_bytes(const uint8_t *data, size_t len, const uint8_t *context, size_t context_len, lms_multi_claim_proof **out);
 int32_t lms_multi_claim_proof_to_bytes(lms_multi_claim_proof *proof, lms_buffer *out);

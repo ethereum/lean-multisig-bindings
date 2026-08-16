@@ -22,7 +22,7 @@ From the repository root:
 gradle -p bindings/java test
 ```
 
-The test task builds `lean_multisig_java_native` in release mode and supplies its path through
+The test task builds the shared `lean_multisig_native` library in release mode and supplies its path through
 `-Dlean.multisig.native.path`. Applications embedding the library must similarly build or package
 a platform-specific native library and set that property before first use.
 
@@ -52,6 +52,7 @@ try (SecretKey key = SecretKey.fromSeed(seed32, 100, 115);
 }
 ```
 
-The native ABI in `native/` is private implementation detail for these bindings, not a stable C
-API. Signature and proof byte encodings intentionally omit their claim/signer context; callers
-provide that context when restoring or verifying them.
+The native ABI in [`../native`](../native) is an internal implementation detail shared by
+managed-language bindings, not a stable C API. Java currently consumes it through FFM; a future
+Go binding may consume it through cgo. Signature and proof byte encodings intentionally omit their
+claim/signer context; callers provide that context when restoring or verifying them.

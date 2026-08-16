@@ -1,8 +1,10 @@
-//! A deliberately small C ABI for the Java 25 FFM binding.
+//! A deliberately small internal C ABI for managed-language bindings.
 //!
-//! This is not a language-neutral public API.  Its opaque handles, owned buffers, and compact
-//! claim-context encoding exist solely so the Java wrapper can offer normal managed objects.
-#![allow(clippy::missing_safety_doc)] // Safety contract is documented in include/lean_multisig_java.h.
+//! This is not a language-neutral public API. Its opaque handles, owned buffers, and compact
+//! claim-context encoding let language wrappers offer normal managed objects without exposing a
+//! Rust implementation detail. It is currently used by Java FFM and is suitable for a future Go
+//! cgo wrapper.
+#![allow(clippy::missing_safety_doc)] // Safety contract is documented in include/lean_multisig_native.h.
 
 use lean_multisig_api as api;
 use std::cell::RefCell;
@@ -29,11 +31,11 @@ pub struct LmsBuffer {
     pub len: usize,
 }
 
-/// Opaque ownership handle. Java only ever passes its address back to this library.
+/// Opaque ownership handle. Bindings only ever pass its address back to this library.
 pub struct SecretKeyHandle(api::SecretKey);
-/// Opaque ownership handle. Java only ever passes its address back to this library.
+/// Opaque ownership handle. Bindings only ever pass its address back to this library.
 pub struct SignatureHandle(api::Signature);
-/// Opaque ownership handle. Java only ever passes its address back to this library.
+/// Opaque ownership handle. Bindings only ever pass its address back to this library.
 pub struct MultiClaimProofHandle(api::MultiClaimProof);
 
 fn set_error(message: impl Into<String>) {
@@ -188,7 +190,7 @@ fn take_bytes<'a>(
 
 fn decode_groups(bytes: &[u8]) -> Result<Vec<api::ClaimSigners>, String> {
     if bytes.len() < 9 || &bytes[..4] != CLAIM_CONTEXT_MAGIC || bytes[4] != CLAIM_CONTEXT_VERSION {
-        return Err("malformed Java claim context".to_owned());
+        return Err("malformed bridge claim context".to_owned());
     }
     let mut cursor = 5;
     let count =
@@ -219,7 +221,7 @@ fn decode_groups(bytes: &[u8]) -> Result<Vec<api::ClaimSigners>, String> {
         });
     }
     if cursor != bytes.len() {
-        return Err("trailing bytes in Java claim context".to_owned());
+        return Err("trailing bytes in bridge claim context".to_owned());
     }
     Ok(groups)
 }

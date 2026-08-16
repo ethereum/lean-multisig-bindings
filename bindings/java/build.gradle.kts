@@ -23,14 +23,14 @@ dependencies {
 }
 
 val nativeLibraryName = when {
-    System.getProperty("os.name").startsWith("Mac") -> "liblean_multisig_java_native.dylib"
-    System.getProperty("os.name").startsWith("Windows") -> "lean_multisig_java_native.dll"
-    else -> "liblean_multisig_java_native.so"
+    System.getProperty("os.name").startsWith("Mac") -> "liblean_multisig_native.dylib"
+    System.getProperty("os.name").startsWith("Windows") -> "lean_multisig_native.dll"
+    else -> "liblean_multisig_native.so"
 }
 val nativeLibrary = rootProject.projectDir.resolve("../../target/release/$nativeLibraryName")
 
 val buildNative by tasks.registering(Exec::class) {
-    commandLine("cargo", "build", "--manifest-path", "native/Cargo.toml", "--release")
+    commandLine("cargo", "build", "--manifest-path", "../native/Cargo.toml", "--release")
 }
 
 tasks.test {

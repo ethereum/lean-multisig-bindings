@@ -5,7 +5,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Private context format shared with the Java-specific native ABI. */
+/** Private context format shared with the repository's internal native ABI. */
 final class ClaimContexts {
     private static final int HEADER_LENGTH = 9;
     private static final int GROUP_FIXED_LENGTH = 40;
