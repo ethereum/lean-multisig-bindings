@@ -72,3 +72,28 @@ jobs:
 
       - name: Test Java bindings
         run: gradle -p bindings/java test
+
+  go:
+    name: Go cgo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: bindings/go/go.mod
+          cache-dependency-path: bindings/go/go.mod
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Stage static native bridge
+        run: |
+          stage_dir="$RUNNER_TEMP/lean-multisig-native"
+          sh bindings/native/scripts/stage-static.sh "$stage_dir"
+          echo "PKG_CONFIG_PATH=$stage_dir/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Test Go bindings
+        run: go test ./...
+        working-directory: bindings/go
