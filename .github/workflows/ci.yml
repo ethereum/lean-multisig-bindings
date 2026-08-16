@@ -117,6 +117,47 @@ jobs:
           npm test
         working-directory: bindings/node
 
+  zig:
+    name: Zig / ${{ matrix.platform.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: Linux x86_64
+            runner: ubuntu-latest
+            rust_targets: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-gnu
+          - name: macOS universal
+            runner: macos-14
+            rust_targets: x86_64-apple-darwin aarch64-apple-darwin
+            target: universal2-apple-darwin
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Add Rust target support
+        run: rustup target add ${{ matrix.platform.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Stage static native bridge
+        run: |
+          sh bindings/native/scripts/stage-static.sh ${{ matrix.platform.target }} bindings/zig/.native
+          cmp bindings/native/include/lean_multisig_native.h bindings/zig/include/lean_multisig_native.h
+
+      - name: Test Zig bindings
+        run: zig build test -Dnative-dir=.native
+        working-directory: bindings/zig
+
   go:
     name: Go cgo / ${{ matrix.platform.name }}
     strategy:
