@@ -250,7 +250,7 @@ pub fn mergeClaims(allocator: std.mem.Allocator, signatures: []const *const Sign
     return .{ .handle = output orelse return error.NativeFailure };
 }
 
-fn checkStatus(status: c.int32_t) !void {
+fn checkStatus(status: c_int) !void {
     return switch (status) {
         0 => {},
         1 => error.NativeFailure,
@@ -259,7 +259,7 @@ fn checkStatus(status: c.int32_t) !void {
     };
 }
 
-fn verificationStatus(status: c.int32_t) !bool {
+fn verificationStatus(status: c_int) !bool {
     return switch (status) {
         0 => true,
         1 => false,
