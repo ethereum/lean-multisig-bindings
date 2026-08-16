@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/ethereum/lean-multisig-bindings/compare/v0.4.0...v1.0.0) (2026-08-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace Python bindings with safe facade ([#10](https://github.com/ethereum/lean-multisig-bindings/issues/10))
+
+### Features
+
+* add Java 25 bindings ([#12](https://github.com/ethereum/lean-multisig-bindings/issues/12)) ([3690a76](https://github.com/ethereum/lean-multisig-bindings/commit/3690a7628c0148f61419c4f3de189880e6f356f7))
+* replace Python bindings with safe facade ([#10](https://github.com/ethereum/lean-multisig-bindings/issues/10)) ([4a0f276](https://github.com/ethereum/lean-multisig-bindings/commit/4a0f27634d94633a756fac7639a67a4e353df31b))
+
 ## [0.4.0](https://github.com/ethereum/py-lean-multisig/compare/v0.3.0...v0.4.0) (2026-05-08)
 
 
