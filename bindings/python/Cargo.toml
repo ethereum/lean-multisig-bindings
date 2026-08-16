@@ -13,13 +13,4 @@ crate-type = ["cdylib"]
 # in pyproject.toml. Keeping it out of the dependency line lets cargo
 # build/check work normally without the extension-module link rules.
 pyo3 = { version = "0.28.3" }
-
-xmss            = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-backend         = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-rec_aggregation = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-lean_vm         = { git = "https://github.com/leanEthereum/leanMultisig.git", rev = "ef27715cef439953406abe05aead36055bdf42af" }
-
-hex      = "0.4"
-rand     = "0.10"
-postcard = { version = "1", features = ["alloc"] }
-serde    = { version = "1", features = ["derive"] }
+lean_multisig_api = { git = "https://github.com/kevaundray/leanVM.git", rev = "aed646200cf5ae3199c25c61f2bfe094582678ae" }

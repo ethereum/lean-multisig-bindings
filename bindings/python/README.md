@@ -1,134 +1,94 @@
-# Python binding for leanMultisig
+# py-lean-multisig
 
-Python bindings for leanMultisig: XMSS signatures and zkVM-backed signature aggregation.
+Python bindings for the safer `lean_multisig_api` facade from leanVM. It keeps
+the recursion topology, proving parameters, and representation choices inside
+the library. Applications carry the claims and expected signer sets that
+authorize each signature.
 
-Requires Python >= 3.11. Wheels are built for Linux (x86_64, aarch64; glibc + musl) and macOS arm64.
+Requires Python >= 3.11. Wheels are built for Linux (x86_64, aarch64; glibc +
+musl) and macOS arm64.
 
 ## Install
 
-```
+```bash
 pip install py-lean-multisig
 ```
 
-## XMSS keygen / sign / verify
+## Claims and signatures
+
+`Claim` binds a 32-byte message to a slot. A `Signature` always knows its
+claim; its serialized form deliberately omits both the claim and signer set,
+which must come from the surrounding protocol when it is restored.
 
 ```python
 import py_lean_multisig as lm
 
-# Key generation (seed is 32 bytes; slot range is inclusive)
-sk, pk = lm.keygen(b"\x00" * 32, 0, 1023)
+claim = lm.Claim(b"\x42" * 32, 5)
+key = lm.SecretKey.from_seed(b"\x01" * 32, 0, 1023)
+signature = key.sign(claim)
 
-# Sign and verify (message is 32 bytes)
-msg = b"\x42" * 32
-sig = lm.sign(sk, msg, 5, rng_seed=b"\x99" * 32)  # rng_seed optional
-lm.verify(pk, msg, sig, 5)
+# Verify against the exact expected set—checking the proof alone is not enough.
+lm.verify(signature, [key.public_key], claim)
 
-# Serialize/deserialize
-pk2 = lm.PublicKey.from_bytes(pk.to_bytes())
-sig2 = lm.Signature.from_bytes(sig.to_bytes())
-assert pk == pk2 and sig == sig2
+# Supply external context when decoding the wire value.
+restored = lm.Signature.from_bytes(signature.to_bytes(), claim, [key.public_key])
+lm.verify(restored, [key.public_key], claim)
 ```
 
-## Aggregation
+XMSS keys are stateful: never sign different messages at the same slot. Persist
+your own durable high-water slot alongside `SecretKey.to_bytes()` and advance it
+before publishing a signature.
 
-Aggregate N signatures over the same `(message, slot)` into a single proof, then verify.
+## Single-claim aggregation
+
+Call `setup()` once before aggregating, decoding an aggregate, or verifying an
+aggregate. It is safe to call repeatedly.
 
 ```python
 import py_lean_multisig as lm
 
-msg, slot = b"\x42" * 32, 5
-pairs = [lm.keygen(bytes([i+1])*32, 0, 1023) for i in range(4)]
-pks  = [pk for _, pk in pairs]
-sigs = [lm.sign(sk, msg, slot, rng_seed=bytes([i+100])*32) for i, (sk, _) in enumerate(pairs)]
+lm.setup()
+claim = lm.Claim(b"\x42" * 32, 5)
+keys = [lm.SecretKey.from_seed(bytes([i]) * 32, 0, 1023) for i in (1, 2)]
 
-prover = lm.Prover(log_inv_rate=4)
-verifier = lm.Verifier()
-
-sorted_pks, agg = prover.aggregate(pks, sigs, msg, slot)
-verifier.verify(sorted_pks, msg, agg, slot)
-
-# AggregatedSignature bytes round-trip
-agg2 = lm.AggregatedSignature.from_bytes(agg.to_bytes())
+aggregate = lm.aggregate([key.sign(claim) for key in keys], claim)
+expected = [key.public_key for key in keys]
+lm.verify(aggregate, expected, claim)
 ```
 
-## Hierarchical aggregation
+Raw and already aggregated `Signature` values can be mixed in `aggregate`; no
+parallel public-key list or child-proof topology is exposed.
 
-Aggregated proofs are themselves zkVM-verifiable, so a `Prover` can fold
-existing aggregates into a new one via the `children=`.
+## Multi-claim proofs
 
-This is useful for tree-shaped aggregation (each node aggregates its sub-tree's proofs)
-and for distributing proving work across machines (each shard produces
-a child proof and a coordinator folds them).
+`merge_claims` groups signatures by claim and produces one proof. Each expected
+claim has its own explicitly authorized signer set.
 
 ```python
-import py_lean_multisig as lm
+groups = [lm.ClaimSigners(claim, expected)]
+proof = lm.merge_claims([aggregate])
+lm.verify_claims(proof, groups)
 
-msg, slot = b"\x42" * 32, 5
-
-def _signers(seed_offset, n):
-    pairs = [lm.keygen(bytes([seed_offset + i]) * 32, 0, 1023) for i in range(n)]
-    pks  = [pk for _, pk in pairs]
-    sigs = [lm.sign(sk, msg, slot, rng_seed=bytes([seed_offset + 100 + i]) * 32)
-            for i, (sk, _) in enumerate(pairs)]
-    return pks, sigs
-
-prover   = lm.Prover(log_inv_rate=4)
-verifier = lm.Verifier()
-
-# Two disjoint sets of signers, aggregated independently.
-pks_a, sigs_a = _signers(seed_offset=1,  n=2)
-pks_b, sigs_b = _signers(seed_offset=50, n=2)
-sorted_pks_a, agg_a = prover.aggregate(pks_a, sigs_a, msg, slot)
-sorted_pks_b, agg_b = prover.aggregate(pks_b, sigs_b, msg, slot)
-
-# Top level: no fresh raw signatures, just fold the two child proofs.
-# Each child is the (sorted_pub_keys, AggregatedSignature) tuple
-# returned by the previous aggregate() call.
-sorted_pks_top, agg_top = prover.aggregate(
-    [], [], msg, slot,
-    children=[(sorted_pks_a, agg_a), (sorted_pks_b, agg_b)],
-)
-
-verifier.verify(sorted_pks_top, msg, agg_top, slot)
+restored = lm.MultiClaimProof.from_bytes(proof.to_bytes(), groups)
+lm.verify_claims(restored, groups)
 ```
 
-You can also mix raw signatures with children at the same level — fold
-two existing child aggregates plus a fresh batch of raw signatures
-into one combined proof in a single `aggregate()` call:
+## Breaking change
 
-```python
-# Re-use sorted_pks_a / agg_a / sorted_pks_b / agg_b from above, plus
-# a fresh batch of signers not already in either child:
-pks_c, sigs_c = _signers(seed_offset=150, n=2)
-
-sorted_pks_top, agg_top = prover.aggregate(
-    pks_c, sigs_c, msg, slot,                       # fresh raw signatures
-    children=[(sorted_pks_a, agg_a),                # plus the two children
-              (sorted_pks_b, agg_b)],
-)
-
-# sorted_pks_top is the union: 2 from child A + 2 from child B + 2 fresh
-verifier.verify(sorted_pks_top, msg, agg_top, slot)
-```
+This replaces the legacy `keygen`, `Prover`, `Verifier`, `PublicKey`, and
+`AggregatedSignature` API. The replacement makes the claim and expected signer
+set explicit, carries signer context with signatures in memory, and chooses
+aggregation tuning internally.
 
 ## Development
 
-Uses [`uv`](https://github.com/astral-sh/uv) for venv + dependency
-management
-
 ```bash
-# Install development dependencies, build, and editable-install the extension.
 uv run --extra dev maturin develop --release
-
-# Run the test suite.
 uv run --extra dev pytest tests/ -v
-
-# Verify the .pyi stubs match the runtime extension.
 uv run --extra dev python -m mypy.stubtest py_lean_multisig --allowlist stubtest_allowlist.txt
 ```
 
-After Rust source changes, re-run `uv run --extra dev maturin develop --release` to
-rebuild the extension.
+After Rust source changes, re-run `uv run --extra dev maturin develop --release`.
 
 ## License
 
