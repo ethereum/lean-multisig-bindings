@@ -27,8 +27,8 @@ pub const ClaimGroups = struct {
 
     pub fn deinit(self: *ClaimGroups, allocator: std.mem.Allocator) void {
         for (self.items) |group| allocator.free(group.signers);
-        allocator.free(self.items);
-        self.* = undefined;
+        if (self.items.len != 0) allocator.free(self.items);
+        self.items = &.{};
     }
 };
 
@@ -83,7 +83,7 @@ pub const SecretKey = struct {
         defer allocator.free(data);
         if (data.len != 32) return error.InvalidNativeEncoding;
         var key: PublicKey = undefined;
-        @memcpy(&key, data);
+        @memcpy(key[0..], data);
         return key;
     }
 
@@ -288,7 +288,7 @@ fn keysPtr(keys: []const PublicKey) ?[*c]const u8 {
 fn splitKeys(allocator: std.mem.Allocator, data: []const u8) ![]PublicKey {
     if (data.len % 32 != 0) return error.InvalidNativeEncoding;
     const keys = try allocator.alloc(PublicKey, data.len / 32);
-    for (keys, 0..) |*key, index| @memcpy(key, data[index * 32 ..][0..32]);
+    for (keys, 0..) |*key, index| @memcpy(key.*[0..], data[index * 32 ..][0..32]);
     return keys;
 }
 
@@ -308,14 +308,14 @@ fn encodeGroups(allocator: std.mem.Allocator, groups: []const ClaimSigners) ![]u
     std.mem.writeInt(u32, result[5..9], @intCast(groups.len), .little);
     var cursor: usize = 9;
     for (groups) |group| {
-        @memcpy(result[cursor .. cursor + 32], &group.claim.message);
+        @memcpy(result[cursor .. cursor + 32], group.claim.message[0..]);
         cursor += 32;
         std.mem.writeInt(u32, result[cursor .. cursor + 4], group.claim.slot, .little);
         cursor += 4;
         std.mem.writeInt(u32, result[cursor .. cursor + 4], @intCast(group.signers.len), .little);
         cursor += 4;
         for (group.signers) |signer| {
-            @memcpy(result[cursor .. cursor + 32], &signer);
+            @memcpy(result[cursor .. cursor + 32], signer[0..]);
             cursor += 32;
         }
     }
@@ -326,7 +326,7 @@ fn decodeGroups(allocator: std.mem.Allocator, data: []const u8) !ClaimGroups {
     if (data.len < 9 or !std.mem.eql(u8, data[0..4], "LMCG") or data[4] != 1) return error.InvalidNativeEncoding;
     var cursor: usize = 5;
     const count = try takeU32(data, &cursor);
-    const groups = try allocator.alloc(ClaimSigners, count);
+    const groups = try allocator.alloc(ClaimSigners, @intCast(count));
     var initialized: usize = 0;
     errdefer {
         for (groups[0..initialized]) |group| allocator.free(group.signers);
@@ -336,12 +336,11 @@ fn decodeGroups(allocator: std.mem.Allocator, data: []const u8) !ClaimGroups {
         const message = try take32(data, &cursor);
         const slot = try takeU32(data, &cursor);
         const signer_count = try takeU32(data, &cursor);
-        const signer_bytes = std.math.mul(usize, signer_count, 32) catch return error.InvalidNativeEncoding;
+        const signer_bytes = std.math.mul(usize, @as(usize, signer_count), 32) catch return error.InvalidNativeEncoding;
         if (cursor > data.len or signer_bytes > data.len - cursor) return error.InvalidNativeEncoding;
-        const signers = try allocator.alloc(PublicKey, signer_count);
-        errdefer allocator.free(signers);
+        const signers = try allocator.alloc(PublicKey, @intCast(signer_count));
         for (signers) |*signer| {
-            @memcpy(signer, data[cursor .. cursor + 32]);
+            @memcpy(signer.*[0..], data[cursor .. cursor + 32]);
             cursor += 32;
         }
         group.* = .{ .claim = .{ .message = message, .slot = slot }, .signers = signers };
@@ -361,7 +360,7 @@ fn takeU32(data: []const u8, cursor: *usize) !u32 {
 fn take32(data: []const u8, cursor: *usize) ![32]u8 {
     if (cursor.* > data.len or data.len - cursor.* < 32) return error.InvalidNativeEncoding;
     var result: [32]u8 = undefined;
-    @memcpy(&result, data[cursor.* .. cursor.* + 32]);
+    @memcpy(result[0..], data[cursor.* .. cursor.* + 32]);
     cursor.* += 32;
     return result;
 }

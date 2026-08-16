@@ -46,7 +46,7 @@ pub fn main() !void {
     defer signature.deinit();
 
     const signer = try key.publicKey(allocator);
-    try std.debug.assert(try signature.verify(&[_]lms.PublicKey{signer}, claim));
+    std.debug.assert(try signature.verify(&[_]lms.PublicKey{signer}, claim));
 }
 ```
 
