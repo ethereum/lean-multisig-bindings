@@ -73,6 +73,29 @@ jobs:
       - name: Test Java bindings
         run: gradle -p bindings/java test
 
+  node:
+    name: Node.js
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: bindings/node/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build and test Node bindings
+        run: |
+          npm ci
+          npm run build
+          npm test
+        working-directory: bindings/node
+
   go:
     name: Go cgo / ${{ matrix.platform.name }}
     strategy:

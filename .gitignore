@@ -9,6 +9,8 @@ __pycache__/
 *.so
 *.pyd
 *.dll
+*.node
+bindings/node/node_modules/
 .maturin/
 .worktrees/
 bindings/java/.gradle/

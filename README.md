@@ -7,6 +7,7 @@ Language bindings for [leanMultisig](https://github.com/leanEthereum/leanMultisi
 - [`bindings/python`](bindings/python/README.md) — the `py-lean-multisig` package for Python.
 - [`bindings/java`](bindings/java/README.md) — Java 25 bindings for JVM applications such as Teku.
 - [`bindings/go`](bindings/go/README.md) — Go bindings linked through cgo.
+- [`bindings/node`](bindings/node/README.md) — Node.js bindings built with napi-rs.
 
 Each binding uses a language-native wrapper around the Rust implementation. The internal
 [`bindings/native`](bindings/native/README.md) crate supplies a private C-shaped Rust ABI for
