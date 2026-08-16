@@ -1,0 +1,11 @@
+[package]
+name = "lean-multisig-java-native"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lean_multisig_api = { git = "https://github.com/kevaundray/leanVM.git", rev = "aed646200cf5ae3199c25c61f2bfe094582678ae" }

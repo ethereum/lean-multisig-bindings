@@ -11,3 +11,5 @@ __pycache__/
 *.dll
 .maturin/
 .worktrees/
+bindings/java/.gradle/
+bindings/java/build/
