@@ -24,11 +24,11 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.10"]
+dev = ["maturin>=1.7,<2.0", "pytest>=8", "mypy>=1.10"]
 
 [project.urls]
-Repository = "https://github.com/kevaundray/py-lean-multisig"
-Issues = "https://github.com/kevaundray/py-lean-multisig/issues"
+Repository = "https://github.com/ethereum/lean-multisig-bindings"
+Issues = "https://github.com/ethereum/lean-multisig-bindings/issues"
 Upstream = "https://github.com/leanEthereum/leanMultisig"
 
 [tool.maturin]

@@ -55,7 +55,12 @@ fn short_hex(bytes: &[u8]) -> String {
     }
 }
 
-#[pyclass(name = "PublicKey", frozen, module = "py_lean_multisig", skip_from_py_object)]
+#[pyclass(
+    name = "PublicKey",
+    frozen,
+    module = "py_lean_multisig",
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub struct PyPublicKey {
     pub(crate) inner: Arc<XmssPublicKey>,
@@ -66,7 +71,9 @@ impl PyPublicKey {
     #[classmethod]
     fn from_bytes(_cls: &Bound<'_, pyo3::types::PyType>, data: &[u8]) -> PyResult<Self> {
         let pk = decode_public_key(data)?;
-        Ok(Self { inner: Arc::new(pk) })
+        Ok(Self {
+            inner: Arc::new(pk),
+        })
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
@@ -94,7 +101,12 @@ impl PyPublicKey {
     }
 }
 
-#[pyclass(name = "Signature", frozen, module = "py_lean_multisig", skip_from_py_object)]
+#[pyclass(
+    name = "Signature",
+    frozen,
+    module = "py_lean_multisig",
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub struct PySignature {
     pub(crate) inner: Arc<XmssSignature>,
@@ -105,7 +117,9 @@ impl PySignature {
     #[classmethod]
     fn from_bytes(_cls: &Bound<'_, pyo3::types::PyType>, data: &[u8]) -> PyResult<Self> {
         let sig = decode_signature(data)?;
-        Ok(Self { inner: Arc::new(sig) })
+        Ok(Self {
+            inner: Arc::new(sig),
+        })
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
@@ -149,7 +163,9 @@ pub struct PySecretKey {
 impl PySecretKey {
     #[getter]
     fn public_key(&self) -> PyPublicKey {
-        PyPublicKey { inner: Arc::new(self.inner.public_key()) }
+        PyPublicKey {
+            inner: Arc::new(self.inner.public_key()),
+        }
     }
 
     #[getter]
@@ -173,7 +189,12 @@ impl PySecretKey {
     }
 }
 
-#[pyclass(name = "AggregatedSignature", frozen, module = "py_lean_multisig", skip_from_py_object)]
+#[pyclass(
+    name = "AggregatedSignature",
+    frozen,
+    module = "py_lean_multisig",
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub struct PyAggregatedSignature {
     pub(crate) inner: Arc<AggregatedXMSS>,
@@ -184,7 +205,9 @@ impl PyAggregatedSignature {
     #[classmethod]
     fn from_bytes(_cls: &Bound<'_, pyo3::types::PyType>, data: &[u8]) -> PyResult<Self> {
         let agg = decode_aggregated_signature(data)?;
-        Ok(Self { inner: Arc::new(agg) })
+        Ok(Self {
+            inner: Arc::new(agg),
+        })
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {

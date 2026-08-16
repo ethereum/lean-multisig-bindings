@@ -3,7 +3,9 @@ use std::sync::Arc;
 use pyo3::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use xmss::{xmss_key_gen, xmss_sign, xmss_verify, XmssKeyGenError, XmssSignatureError, XmssVerifyError};
+use xmss::{
+    xmss_key_gen, xmss_sign, xmss_verify, XmssKeyGenError, XmssSignatureError, XmssVerifyError,
+};
 
 use crate::error::{KeygenError, SerializationError, SignError, VerifyError};
 use crate::types::{message_from_bytes, PyPublicKey, PySecretKey, PySignature};
@@ -19,7 +21,9 @@ pub fn keygen(seed: &[u8], slot_start: u32, slot_end: u32) -> PyResult<(PySecret
             slot_start, slot_end
         )),
     })?;
-    let py_pk = PyPublicKey { inner: Arc::new(pk) };
+    let py_pk = PyPublicKey {
+        inner: Arc::new(pk),
+    };
     let py_sk = PySecretKey {
         inner: Arc::new(sk),
         slot_start,
@@ -52,7 +56,9 @@ pub fn sign(
             slot, sk.slot_start, sk.slot_end
         )),
     })?;
-    Ok(PySignature { inner: Arc::new(sig) })
+    Ok(PySignature {
+        inner: Arc::new(sig),
+    })
 }
 
 #[pyfunction]

@@ -32,16 +32,20 @@ jobs:
 
       - name: Create virtualenv
         run: uv venv
+        working-directory: bindings/python
 
       - name: Build + install (release, with dev extras)
         uses: PyO3/maturin-action@v1
         with:
           command: develop
           args: --release --extras dev
+          working-directory: bindings/python
           sccache: true
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run --extra dev pytest tests/ -v
+        working-directory: bindings/python
 
       - name: Check type stubs match runtime
-        run: uv run python -m mypy.stubtest py_lean_multisig --allowlist stubtest_allowlist.txt
+        run: uv run --extra dev python -m mypy.stubtest py_lean_multisig --allowlist stubtest_allowlist.txt
+        working-directory: bindings/python

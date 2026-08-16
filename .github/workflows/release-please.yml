@@ -12,12 +12,12 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
+      bindings/python--release_created: ${{ steps.rp.outputs['bindings/python--release_created'] }}
+      bindings/python--tag_name: ${{ steps.rp.outputs['bindings/python--tag_name'] }}
     steps:
       # Maintains a "release PR" that aggregates pending conventional-commit
-      # changes — bumps the version in Cargo.toml + Cargo.lock, updates
-      # CHANGELOG.md. When that PR is merged, RP creates a vX.Y.Z tag and
+      # changes — bumps the binding's Cargo.toml and the workspace Cargo.lock,
+      # and updates its CHANGELOG.md. When that PR is merged, RP creates a vX.Y.Z tag and
       # the trigger-release job below fires release.yml against that tag.
       - id: rp
         uses: googleapis/release-please-action@v4
@@ -31,7 +31,7 @@ jobs:
   # against the new tag.
   trigger-release:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release-please.outputs['bindings/python--release_created'] == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -43,5 +43,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'release.yml',
-              ref: '${{ needs.release-please.outputs.tag_name }}',
+              ref: '${{ needs.release-please.outputs['bindings/python--tag_name'] }}',
             });

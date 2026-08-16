@@ -45,7 +45,8 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           command: build
-          args: --release --out dist --find-interpreter
+          args: --release --out ../../dist --find-interpreter
+          working-directory: bindings/python
           # manylinux: auto picks the right manylinux container per target.
           # The container is isolated from the runner, so --find-interpreter
           # tells maturin to discover the Pythons inside (mounted by the
@@ -81,7 +82,8 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           command: build
-          args: --release --out dist --find-interpreter
+          args: --release --out ../../dist --find-interpreter
+          working-directory: bindings/python
           manylinux: musllinux_1_2
           sccache: true
       - uses: actions/upload-artifact@v4
@@ -101,7 +103,8 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
-          args: --out dist
+          args: --out ../../dist
+          working-directory: bindings/python
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist
@@ -115,7 +118,7 @@ jobs:
     # https://pypi.org/manage/account/publishing/  (account-level — used
     # before the project exists on PyPI; flips to project-level after the
     # first successful publish). Configured publisher claims:
-    #   repo:        kevaundray/py-lean-multisig
+    #   repo:        ethereum/lean-multisig-bindings
     #   workflow:    release.yml
     #   environment: pypi          (must match `environment.name` below)
     environment:
