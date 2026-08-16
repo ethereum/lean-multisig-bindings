@@ -90,9 +90,8 @@ jobs:
 
       - name: Stage static native bridge
         run: |
-          stage_dir="$RUNNER_TEMP/lean-multisig-native"
-          sh bindings/native/scripts/stage-static.sh "$stage_dir"
-          echo "PKG_CONFIG_PATH=$stage_dir/lib/pkgconfig" >> "$GITHUB_ENV"
+          sh bindings/native/scripts/stage-static.sh bindings/go/internal/native/linux_amd64
+          cmp bindings/native/include/lean_multisig_native.h bindings/go/internal/native/include/lean_multisig_native.h
 
       - name: Test Go bindings
         run: go test ./...

@@ -3,7 +3,7 @@
 // Package leanmultisig provides Go bindings for XMSS signatures and recursive aggregation.
 package leanmultisig
 
-// #cgo pkg-config: --static lean-multisig-native
+// #cgo CFLAGS: -I${SRCDIR}/internal/native/include
 // #include "lean_multisig_native.h"
 import "C"
 

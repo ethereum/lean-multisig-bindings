@@ -8,22 +8,19 @@ Rust static archive linked into the final program through cgo. The Go API uses n
 
 - Go 1.24 or newer with cgo enabled
 - A C linker for the target platform
-- An installed, target-matched `lean-multisig-native` static package discoverable by `pkg-config`
 
-The installed native package contains `liblean_multisig_native.a`,
-`lean_multisig_native.h`, and `lean-multisig-native.pc`. The forthcoming release workflow will
-produce one package per supported OS/architecture; ordinary Go users will link that prebuilt archive
-and will not compile Rust.
+Each Go release carries a target-matched `liblean_multisig_native.a` in its internal native-asset
+directory. Go build tags select that archive and link it into the final Go binary. Ordinary users do
+not install a native package or compile Rust.
 
 ## Source build and test
 
-From the repository root, stage a local static native package and point `pkg-config` to it:
+From the repository root, stage the local Linux amd64 archive in the layout used by the Go package:
 
 ```sh
-stage_dir=$(mktemp -d)
-sh bindings/native/scripts/stage-static.sh "$stage_dir"
+sh bindings/native/scripts/stage-static.sh bindings/go/internal/native/linux_amd64
 cd bindings/go
-PKG_CONFIG_PATH="$stage_dir/lib/pkgconfig" go test ./...
+go test ./...
 ```
 
 ## Example

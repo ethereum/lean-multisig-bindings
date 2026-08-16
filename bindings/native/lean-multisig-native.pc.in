@@ -1,9 +1,0 @@
-prefix=@PREFIX@
-libdir=${prefix}/lib
-includedir=${prefix}/include
-
-Name: lean-multisig-native
-Description: Internal native bridge for lean-multisig bindings
-Version: @VERSION@
-Libs: -L${libdir} -llean_multisig_native -ldl -lpthread -lm
-Cflags: -I${includedir}
