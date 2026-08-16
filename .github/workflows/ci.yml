@@ -6,6 +6,27 @@ on:
   pull_request:
 
 jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Test Rust bindings
+        run: cargo test -p lean-multisig
+
+      - name: Lint Rust bindings
+        run: cargo clippy -p lean-multisig --all-targets -- -D warnings
+
   test:
     name: ${{ matrix.os }} / py${{ matrix.python }}
     strategy:

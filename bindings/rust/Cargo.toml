@@ -1,0 +1,14 @@
+[package]
+name = "lean-multisig"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Safe Rust API for leanMultisig"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ethereum/lean-multisig-bindings"
+readme = "README.md"
+keywords = ["cryptography", "signature", "xmss", "ethereum"]
+categories = ["cryptography"]
+
+[dependencies]
+lean_multisig_api = { workspace = true }
