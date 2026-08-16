@@ -22,6 +22,8 @@ pub fn build(b: *std.Build) void {
         tests.root_module.linkSystemLibrary("dl", .{});
         tests.root_module.linkSystemLibrary("pthread", .{});
         tests.root_module.linkSystemLibrary("unwind", .{});
+    } else if (target.result.os.tag == .macos) {
+        tests.root_module.linkFramework("Foundation", .{});
     }
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run Zig binding tests");
