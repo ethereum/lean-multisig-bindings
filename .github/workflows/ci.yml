@@ -72,3 +72,69 @@ jobs:
 
       - name: Test Java bindings
         run: gradle -p bindings/java test
+
+  go:
+    name: Go cgo / ${{ matrix.platform.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: Linux amd64
+            runner: ubuntu-latest
+            rust_targets: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-gnu
+            archive_dir: bindings/go/internal/native/linux_amd64
+            go_test_command: go test ./...
+          - name: Linux arm64
+            runner: ubuntu-latest
+            rust_targets: aarch64-unknown-linux-gnu
+            target: aarch64-unknown-linux-gnu
+            archive_dir: bindings/go/internal/native/linux_arm64
+            go_test_command: CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC="zig cc -target aarch64-linux-gnu" go test -c -o /tmp/leanmultisig-arm64.test .
+          - name: macOS universal
+            runner: macos-14
+            rust_targets: x86_64-apple-darwin aarch64-apple-darwin
+            target: universal2-apple-darwin
+            archive_dir: bindings/go/internal/native/darwin_universal
+            go_test_command: go test ./...
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Go native build configuration
+        run: |
+          sh bindings/native/scripts/stage-static-test.sh
+          sh bindings/go/native-platform-test.sh
+          sh scripts/check-go-ci.sh
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: bindings/go/go.mod
+          cache-dependency-path: bindings/go/go.mod
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Add Rust target support
+        run: rustup target add ${{ matrix.platform.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Stage static native bridge
+        run: |
+          sh bindings/native/scripts/stage-static.sh ${{ matrix.platform.target }} ${{ matrix.platform.archive_dir }}
+          cmp bindings/native/include/lean_multisig_native.h bindings/go/internal/native/include/lean_multisig_native.h
+
+      - name: Check universal macOS archive slices
+        if: matrix.platform.target == 'universal2-apple-darwin'
+        run: lipo bindings/go/internal/native/darwin_universal/liblean_multisig_native.a -verify_arch arm64 x86_64
+
+      - name: Test Go bindings
+        run: ${{ matrix.platform.go_test_command }}
+        working-directory: bindings/go
