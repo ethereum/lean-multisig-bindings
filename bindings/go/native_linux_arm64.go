@@ -2,5 +2,5 @@
 
 package leanmultisig
 
-// #cgo LDFLAGS: -L${SRCDIR}/internal/native/linux_arm64 -llean_multisig_native -ldl -lpthread -lm
+// #cgo LDFLAGS: -L${SRCDIR}/internal/native/linux_arm64 -llean_multisig_native -ldl -lpthread -lm -lunwind
 import "C"

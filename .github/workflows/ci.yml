@@ -133,7 +133,7 @@ jobs:
 
       - name: Check universal macOS archive slices
         if: matrix.platform.target == 'universal2-apple-darwin'
-        run: lipo -verify_arch arm64 x86_64 bindings/go/internal/native/darwin_universal/liblean_multisig_native.a
+        run: lipo bindings/go/internal/native/darwin_universal/liblean_multisig_native.a -verify_arch arm64 x86_64
 
       - name: Test Go bindings
         run: ${{ matrix.platform.go_test_command }}
