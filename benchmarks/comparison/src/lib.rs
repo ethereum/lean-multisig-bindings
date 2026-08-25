@@ -343,15 +343,163 @@ fn parse_sizes(option: &str, value: &str, maximum: usize) -> Result<Vec<usize>> 
     Ok(sizes)
 }
 
+pub struct BlsFixtureSet {
+    messages: Vec<lighthouse_bls::Hash256>,
+    keys: Vec<lighthouse_bls::SecretKey>,
+    signatures: Vec<lighthouse_bls::Signature>,
+    public_keys: Vec<lighthouse_bls::PublicKey>,
+}
+
+impl BlsFixtureSet {
+    pub fn same_claim(count: usize) -> Result<Self> {
+        let fixtures = Self::build(count, false)?;
+        fixtures.validate_raw()?;
+        Ok(fixtures)
+    }
+
+    pub fn distinct_claims(count: usize) -> Result<Self> {
+        let fixtures = Self::build(count, true)?;
+        fixtures.validate_raw()?;
+        Ok(fixtures)
+    }
+
+    fn build(count: usize, distinct_claims: bool) -> Result<Self> {
+        ensure!(count > 0, "BLS fixture count must be greater than zero");
+
+        let mut messages = Vec::with_capacity(count);
+        let mut keys = Vec::with_capacity(count);
+        let mut signatures = Vec::with_capacity(count);
+        let mut public_keys = Vec::with_capacity(count);
+
+        for index in 0..count {
+            let message_index = if distinct_claims { index } else { 0 };
+            let message = lighthouse_bls::Hash256::from(indexed_bytes(message_index)?);
+            let secret = indexed_bytes(index)
+                .with_context(|| format!("failed to create BLS secret for signer {index}"))?;
+            let key = lighthouse_bls::SecretKey::deserialize(&secret).map_err(|error| {
+                anyhow!("failed to deserialize BLS key for signer {index}: {error:?}")
+            })?;
+            let public_key = key.public_key();
+            let signature = key.sign(message);
+
+            messages.push(message);
+            keys.push(key);
+            signatures.push(signature);
+            public_keys.push(public_key);
+        }
+
+        Ok(Self {
+            messages,
+            keys,
+            signatures,
+            public_keys,
+        })
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
+
+    #[must_use]
+    pub fn messages(&self) -> &[lighthouse_bls::Hash256] {
+        &self.messages
+    }
+
+    #[must_use]
+    pub fn keys(&self) -> &[lighthouse_bls::SecretKey] {
+        &self.keys
+    }
+
+    #[must_use]
+    pub fn signatures(&self) -> &[lighthouse_bls::Signature] {
+        &self.signatures
+    }
+
+    #[must_use]
+    pub fn public_keys(&self) -> &[lighthouse_bls::PublicKey] {
+        &self.public_keys
+    }
+
+    #[must_use]
+    pub fn aggregate(&self) -> lighthouse_bls::AggregateSignature {
+        let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
+        for signature in &self.signatures {
+            aggregate.add_assign(signature);
+        }
+        aggregate
+    }
+
+    #[must_use]
+    pub fn verify_same_claim_aggregate(
+        &self,
+        aggregate: &lighthouse_bls::AggregateSignature,
+    ) -> bool {
+        let public_keys = self.public_keys.iter().collect::<Vec<_>>();
+        aggregate.fast_aggregate_verify(self.messages[0], &public_keys)
+    }
+
+    #[must_use]
+    pub fn verify_distinct_claim_aggregate(
+        &self,
+        aggregate: &lighthouse_bls::AggregateSignature,
+    ) -> bool {
+        let public_keys = self.public_keys.iter().collect::<Vec<_>>();
+        aggregate.aggregate_verify(&self.messages, &public_keys)
+    }
+
+    #[must_use]
+    pub fn signature_sets(&self) -> Vec<lighthouse_bls::SignatureSet<'_>> {
+        self.signatures
+            .iter()
+            .zip(&self.public_keys)
+            .zip(&self.messages)
+            .map(|((signature, public_key), message)| {
+                lighthouse_bls::SignatureSet::single_pubkey(
+                    signature,
+                    Cow::Borrowed(public_key),
+                    *message,
+                )
+            })
+            .collect()
+    }
+
+    fn validate_raw(&self) -> Result<()> {
+        let expected_len = self.len();
+        ensure!(
+            [
+                self.messages.len(),
+                self.keys.len(),
+                self.signatures.len(),
+                self.public_keys.len(),
+            ]
+            .into_iter()
+            .all(|len| len == expected_len),
+            "BLS fixture vectors have inconsistent lengths"
+        );
+
+        for index in 0..expected_len {
+            ensure!(
+                self.signatures[index].verify(&self.public_keys[index], self.messages[index]),
+                "BLS signature failed validation for signer {index}"
+            );
+        }
+
+        Ok(())
+    }
+}
+
 pub struct FixtureSet {
     lean_claims: Vec<lean_multisig::Claim>,
     lean_keys: Vec<lean_multisig::SecretKey>,
     lean_signatures: Vec<lean_multisig::Signature>,
     lean_public_keys: Vec<lean_multisig::PublicKey>,
-    bls_messages: Vec<lighthouse_bls::Hash256>,
-    bls_keys: Vec<lighthouse_bls::SecretKey>,
-    bls_signatures: Vec<lighthouse_bls::Signature>,
-    bls_public_keys: Vec<lighthouse_bls::PublicKey>,
+    bls: BlsFixtureSet,
 }
 
 impl FixtureSet {
@@ -370,16 +518,12 @@ impl FixtureSet {
     }
 
     fn build(count: usize, distinct_claims: bool) -> Result<Self> {
-        ensure!(count > 0, "fixture count must be greater than zero");
+        let bls = BlsFixtureSet::build(count, distinct_claims)?;
 
         let mut lean_claims = Vec::with_capacity(count);
         let mut lean_keys = Vec::with_capacity(count);
         let mut lean_signatures = Vec::with_capacity(count);
         let mut lean_public_keys = Vec::with_capacity(count);
-        let mut bls_messages = Vec::with_capacity(count);
-        let mut bls_keys = Vec::with_capacity(count);
-        let mut bls_signatures = Vec::with_capacity(count);
-        let mut bls_public_keys = Vec::with_capacity(count);
 
         for index in 0..count {
             let message_index = if distinct_claims { index } else { 0 };
@@ -403,23 +547,10 @@ impl FixtureSet {
                 .sign(&claim)
                 .with_context(|| format!("failed to create XMSS signature for signer {index}"))?;
 
-            let bls_secret = indexed_bytes(index)
-                .with_context(|| format!("failed to create BLS secret for signer {index}"))?;
-            let bls_key = lighthouse_bls::SecretKey::deserialize(&bls_secret).map_err(|error| {
-                anyhow!("failed to deserialize BLS key for signer {index}: {error:?}")
-            })?;
-            let bls_public_key = bls_key.public_key();
-            let bls_message = lighthouse_bls::Hash256::from(message);
-            let bls_signature = bls_key.sign(bls_message);
-
             lean_claims.push(claim);
             lean_keys.push(lean_key);
             lean_signatures.push(lean_signature);
             lean_public_keys.push(lean_public_key);
-            bls_messages.push(bls_message);
-            bls_keys.push(bls_key);
-            bls_signatures.push(bls_signature);
-            bls_public_keys.push(bls_public_key);
         }
 
         let fixtures = Self {
@@ -427,10 +558,7 @@ impl FixtureSet {
             lean_keys,
             lean_signatures,
             lean_public_keys,
-            bls_messages,
-            bls_keys,
-            bls_signatures,
-            bls_public_keys,
+            bls,
         };
         fixtures.validate_raw()?;
         Ok(fixtures)
@@ -468,31 +596,27 @@ impl FixtureSet {
 
     #[must_use]
     pub fn bls_messages(&self) -> &[lighthouse_bls::Hash256] {
-        &self.bls_messages
+        self.bls.messages()
     }
 
     #[must_use]
     pub fn bls_keys(&self) -> &[lighthouse_bls::SecretKey] {
-        &self.bls_keys
+        self.bls.keys()
     }
 
     #[must_use]
     pub fn bls_signatures(&self) -> &[lighthouse_bls::Signature] {
-        &self.bls_signatures
+        self.bls.signatures()
     }
 
     #[must_use]
     pub fn bls_public_keys(&self) -> &[lighthouse_bls::PublicKey] {
-        &self.bls_public_keys
+        self.bls.public_keys()
     }
 
     #[must_use]
     pub fn bls_aggregate(&self) -> lighthouse_bls::AggregateSignature {
-        let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
-        for signature in &self.bls_signatures {
-            aggregate.add_assign(signature);
-        }
-        aggregate
+        self.bls.aggregate()
     }
 
     #[must_use]
@@ -500,8 +624,7 @@ impl FixtureSet {
         &self,
         aggregate: &lighthouse_bls::AggregateSignature,
     ) -> bool {
-        let public_keys = self.bls_public_keys.iter().collect::<Vec<_>>();
-        aggregate.fast_aggregate_verify(self.bls_messages[0], &public_keys)
+        self.bls.verify_same_claim_aggregate(aggregate)
     }
 
     #[must_use]
@@ -509,24 +632,12 @@ impl FixtureSet {
         &self,
         aggregate: &lighthouse_bls::AggregateSignature,
     ) -> bool {
-        let public_keys = self.bls_public_keys.iter().collect::<Vec<_>>();
-        aggregate.aggregate_verify(&self.bls_messages, &public_keys)
+        self.bls.verify_distinct_claim_aggregate(aggregate)
     }
 
     #[must_use]
     pub fn bls_signature_sets(&self) -> Vec<lighthouse_bls::SignatureSet<'_>> {
-        self.bls_signatures
-            .iter()
-            .zip(&self.bls_public_keys)
-            .zip(&self.bls_messages)
-            .map(|((signature, public_key), message)| {
-                lighthouse_bls::SignatureSet::single_pubkey(
-                    signature,
-                    Cow::Borrowed(public_key),
-                    *message,
-                )
-            })
-            .collect()
+        self.bls.signature_sets()
     }
 
     pub fn validate_raw(&self) -> Result<()> {
@@ -536,10 +647,7 @@ impl FixtureSet {
                 self.lean_claims.len(),
                 self.lean_signatures.len(),
                 self.lean_public_keys.len(),
-                self.bls_messages.len(),
-                self.bls_keys.len(),
-                self.bls_signatures.len(),
-                self.bls_public_keys.len(),
+                self.bls.len(),
             ]
             .into_iter()
             .all(|len| len == expected_len),
@@ -553,13 +661,9 @@ impl FixtureSet {
                 &self.lean_claims[index],
             )
             .with_context(|| format!("XMSS signature failed validation for signer {index}"))?;
-
-            ensure!(
-                self.bls_signatures[index]
-                    .verify(&self.bls_public_keys[index], self.bls_messages[index]),
-                "BLS signature failed validation for signer {index}"
-            );
         }
+
+        self.bls.validate_raw()?;
 
         Ok(())
     }

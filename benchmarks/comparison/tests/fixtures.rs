@@ -1,5 +1,6 @@
 use lean_multisig_comparison::{
-    deterministic_key_material, FixtureSet, MAX_DISTINCT_CLAIMS, MAX_SAME_CLAIM_SIGNERS,
+    deterministic_key_material, BlsFixtureSet, FixtureSet, MAX_DISTINCT_CLAIMS,
+    MAX_SAME_CLAIM_SIGNERS,
 };
 
 #[test]
@@ -17,6 +18,36 @@ fn fixtures_have_the_requested_unique_signers() {
         fixtures.bls_public_keys()[0].serialize(),
         fixtures.bls_public_keys()[1].serialize()
     );
+}
+
+#[test]
+fn bls_only_same_claim_fixtures_scale_to_512_signers() {
+    let fixtures = BlsFixtureSet::same_claim(MAX_SAME_CLAIM_SIGNERS).unwrap();
+
+    assert_eq!(fixtures.len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.messages().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.keys().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.signatures().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.public_keys().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert!(fixtures.verify_same_claim_aggregate(&fixtures.aggregate()));
+}
+
+#[test]
+fn bls_only_distinct_claim_fixtures_use_and_verify_distinct_messages() {
+    let fixtures = BlsFixtureSet::distinct_claims(3).unwrap();
+    let aggregate = fixtures.aggregate();
+
+    assert_ne!(fixtures.messages()[0], fixtures.messages()[1]);
+    assert!(fixtures.verify_distinct_claim_aggregate(&aggregate));
+}
+
+#[test]
+fn bls_only_fixtures_expose_borrowed_signature_sets() {
+    let fixtures = BlsFixtureSet::distinct_claims(3).unwrap();
+    let signature_sets = fixtures.signature_sets();
+
+    assert_eq!(signature_sets.len(), fixtures.len());
+    assert!(lighthouse_bls::verify_signature_sets(signature_sets.iter()));
 }
 
 #[test]
@@ -49,6 +80,8 @@ fn distinct_fixtures_use_distinct_messages_and_slots() {
 
 #[test]
 fn fixtures_reject_empty_and_excessive_counts() {
+    assert!(BlsFixtureSet::same_claim(0).is_err());
+    assert!(BlsFixtureSet::distinct_claims(0).is_err());
     assert!(FixtureSet::same_claim(0).is_err());
     assert!(FixtureSet::distinct_claims(0).is_err());
     assert!(FixtureSet::distinct_claims(MAX_DISTINCT_CLAIMS + 1).is_err());
