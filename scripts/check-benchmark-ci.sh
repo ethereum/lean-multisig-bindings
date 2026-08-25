@@ -7,6 +7,7 @@ ci_workflow=.github/workflows/ci.yml
 dashboard_builder=scripts/build_benchmark_dashboard.py
 dashboard_test=scripts/test_benchmark_dashboard.py
 dashboard_html=benchmarks/comparison/dashboard/index.html
+comparison_bench=benchmarks/comparison/benches/comparison.rs
 
 fail() {
   echo "benchmark CI policy: $*" >&2
@@ -48,9 +49,13 @@ check_full_action_pins() {
   [ -z "$unpinned" ] || fail "$file: every uses reference must have a full immutable SHA pin: $unpinned"
 }
 
-for file in "$pr_workflow" "$history_workflow" "$dashboard_builder" "$dashboard_test" "$dashboard_html"; do
+for file in "$pr_workflow" "$history_workflow" "$dashboard_builder" "$dashboard_test" "$dashboard_html" "$comparison_bench"; do
   require_file "$file"
 done
+
+reject_text "$comparison_bench" 'benchmark_group\("public_key"\)' 'public-key derivation timing benchmark'
+require_text "$comparison_bench" '"public_key/lean".*lean_public_key\.len' 'LeanVM serialized public-key size'
+require_text "$comparison_bench" '"public_key/lighthouse".*bls_public_key\.serialize\(\)\.len' 'Lighthouse serialized public-key size'
 
 require_text "$pr_workflow" '^  pull_request:$' 'pull_request trigger'
 reject_text "$pr_workflow" 'pull_request_target|workflow_run' 'privileged PR trigger'

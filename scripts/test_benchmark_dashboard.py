@@ -32,8 +32,6 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn('fetch(`data/${suite}.json`', html)
         self.assertIn("textContent", html)
         self.assertIn("overflow-x: auto", html)
-        self.assertIn("LeanVM ops/s", html)
-        self.assertIn("BLS ops/s", html)
         self.assertNotIn("innerHTML", html)
         self.assertNotIn("<canvas", lowered)
         self.assertNotIn("<svg", lowered)
@@ -94,6 +92,12 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertNotIn("Lean artifact", html)
         self.assertNotIn("BLS artifact", html)
 
+    def test_dashboard_omits_ops_per_second_columns(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("LeanVM ops/s", html)
+        self.assertNotIn("BLS ops/s", html)
+        self.assertNotIn("function throughput", html)
+
     def test_dashboard_uses_leanvm_in_user_facing_copy(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
         for old_label in (
@@ -107,7 +111,6 @@ class DashboardBuilderTests(unittest.TestCase):
             self.assertNotIn(old_label, html)
         self.assertIn("LeanVM median", html)
         self.assertIn("LeanVM / BLS", html)
-        self.assertIn("LeanVM ops/s", html)
         self.assertIn("LeanVM proof size", html)
 
     def test_fast_command_normalizes_real_bencher_rows(self):

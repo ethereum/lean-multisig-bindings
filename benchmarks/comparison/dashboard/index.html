@@ -343,11 +343,6 @@
       return `${(lean / lighthouse).toLocaleString(undefined, { maximumFractionDigits: 2 })}×`;
     }
 
-    function throughput(value) {
-      if (!Number.isFinite(value)) return dash;
-      return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    }
-
     function compactCommit(value) {
       return value ? String(value).slice(0, 12) : dash;
     }
@@ -490,8 +485,6 @@
           duration(result.lean?.median_ns),
           duration(result.lighthouse?.median_ns),
           `${Number(result.lean_over_lighthouse).toLocaleString(undefined, { maximumFractionDigits: 2 })}×`,
-          throughput(result.lean?.operations_per_second),
-          throughput(result.lighthouse?.operations_per_second),
           bytes(result.lean_artifact_bytes),
           bytes(result.lighthouse_artifact_bytes),
         ],
@@ -505,13 +498,11 @@
             duration(result.lighthouse?.median_ns),
             dash,
             dash,
-            throughput(result.lighthouse?.operations_per_second),
-            dash,
             dash,
           ],
         });
       }
-      addGroupedTables(target, ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM ops/s", "BLS ops/s", "LeanVM proof size", "BLS signature size"], rows);
+      addGroupedTables(target, ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM proof size", "BLS signature size"], rows);
       document.getElementById("slow-stamp").textContent = new Date(data.measured_at).toLocaleString();
     }
 

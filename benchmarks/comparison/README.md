@@ -148,13 +148,13 @@ last slow result and vice versa. It also installs the static dashboard as the
 branch-root `index.html`; it does not execute measured repository code.
 
 The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It shows
-only the newest result for each suite: LeanVM and Lighthouse timings, throughput,
-and ratios grouped by operation family; serialized secret-key, public-key, and
-raw-signature sizes; LeanVM proof and aggregate BLS signature sizes; overall
-slow-suite peak RSS; and the measurement environment. The LeanVM secret-key row
-uses the same 16 signing slots as the key-creation benchmark. A short glossary
-defines the aggregation and verification workloads. There are no commit-over-
-commit plots. The first publication removes the old nested `dev/bench` pages.
+only the newest result for each suite: LeanVM and Lighthouse timings and ratios
+grouped by operation family; serialized secret-key, public-key, and raw-signature
+sizes; LeanVM proof and aggregate BLS signature sizes; overall slow-suite peak
+RSS; and the measurement environment. The LeanVM secret-key row uses the same 16
+signing slots as the key-creation benchmark. A short glossary defines the
+aggregation and verification workloads. There are no commit-over-commit plots.
+The first publication removes the old nested `dev/bench` pages.
 
 ### One-time Pages setup
 
