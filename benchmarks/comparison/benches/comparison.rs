@@ -67,15 +67,6 @@ fn single_operations(criterion: &mut Criterion) {
     });
     group.finish();
 
-    let mut group = criterion.benchmark_group("public_key");
-    group.bench_function("lean", |bencher| {
-        bencher.iter(|| black_box(black_box(lean_key).public_key()));
-    });
-    group.bench_function("lighthouse", |bencher| {
-        bencher.iter(|| black_box(black_box(bls_key).public_key()));
-    });
-    group.finish();
-
     let mut group = criterion.benchmark_group("sign");
     group.bench_function("lean", |bencher| {
         bencher.iter(|| {
