@@ -148,9 +148,11 @@ branch-root `index.html`; it does not execute measured repository code.
 
 The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It shows
 only the newest result for each suite: Lean and Lighthouse timings, throughput,
-and ratios; artifact sizes for proof-backed operations; overall slow-suite peak
-RSS; and the measurement environment. There are no commit-over-commit plots.
-The first publication removes the old nested `dev/bench` pages.
+and ratios grouped by operation family; Lean proof and BLS signature sizes;
+overall slow-suite peak RSS; and the measurement environment. A short glossary
+defines the aggregation and verification workloads. There are no
+commit-over-commit plots. The first publication removes the old nested
+`dev/bench` pages.
 
 ### One-time Pages setup
 

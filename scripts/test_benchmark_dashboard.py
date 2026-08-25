@@ -40,6 +40,50 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertNotIn("chart", lowered)
         self.assertNotIn("dev/bench", lowered)
 
+    def test_dashboard_folds_input_size_into_operation_names(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("function operationLabel(workload, inputSize)", html)
+        self.assertIn("(size = ${inputSize})", html)
+        self.assertNotIn('["Operation", "Size"', html)
+
+    def test_dashboard_explains_benchmark_terms_after_results(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        lowered = html.lower()
+        self.assertIn('id="explainer"', html)
+        self.assertGreater(html.index('id="explainer"'), html.index('id="slow-results"'))
+        self.assertIn("same-claim aggregation", lowered)
+        self.assertIn("same message", lowered)
+        self.assertIn("distinct-claim aggregation", lowered)
+        self.assertIn("proof size", lowered)
+        self.assertIn("peak rss", lowered)
+
+    def test_dashboard_metadata_wraps_and_omits_secondary_details(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("overflow-wrap: anywhere", html)
+        self.assertIn("white-space: normal", html)
+        self.assertNotIn("text-overflow: ellipsis", html)
+        self.assertNotIn('<div class="legend"', html)
+        self.assertNotIn('["Runner"', html)
+        self.assertNotIn('["Same-claim sizes"', html)
+        self.assertNotIn('["Distinct-claim sizes"', html)
+
+    def test_dashboard_splits_results_into_operation_family_tables(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("function addGroupedTables", html)
+        self.assertIn('"Basic operations"', html)
+        self.assertIn('"Same-claim aggregation"', html)
+        self.assertIn('"Same-claim verification"', html)
+        self.assertIn('"Distinct-claim aggregation"', html)
+        self.assertIn('"Distinct-claim verification"', html)
+        self.assertIn('|| workload === "signature_sets_verify"', html)
+
+    def test_dashboard_labels_proof_and_signature_sizes_explicitly(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("Lean proof size", html)
+        self.assertIn("BLS signature size", html)
+        self.assertNotIn("Lean artifact", html)
+        self.assertNotIn("BLS artifact", html)
+
     def test_fast_command_normalizes_real_bencher_rows(self):
         dashboard = load_dashboard_module()
         with tempfile.TemporaryDirectory() as directory:
