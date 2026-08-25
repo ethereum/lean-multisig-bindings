@@ -14,6 +14,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
+pub const MAX_SAME_CLAIM_SIGNERS: usize = 512;
 pub const LIGHTHOUSE_REVISION: &str = "e423a66763bb1bd780492d635123f208d80c3538";
 
 /// Returns deterministic, nonzero 32-byte key material for a fixture signer.
@@ -94,8 +95,8 @@ impl ComparisonReport {
         ensure!(!workload.is_empty(), "workload must not be empty");
         ensure!(input_size > 0, "input size must be greater than zero");
         ensure!(
-            input_size <= MAX_DISTINCT_CLAIMS,
-            "input size {input_size} exceeds maximum {MAX_DISTINCT_CLAIMS}"
+            input_size <= MAX_SAME_CLAIM_SIGNERS,
+            "input size {input_size} exceeds maximum {MAX_SAME_CLAIM_SIGNERS}"
         );
         ensure!(lean.median_ns > 0, "lean median must be greater than zero");
         ensure!(
@@ -187,7 +188,8 @@ fn format_duration_ns(nanoseconds: u64) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunConfig {
     pub samples: usize,
-    pub sizes: Vec<usize>,
+    pub same_sizes: Vec<usize>,
+    pub distinct_sizes: Vec<usize>,
     pub json_path: Option<PathBuf>,
     pub warmup_proofs: bool,
 }
@@ -203,6 +205,8 @@ impl RunConfig {
 
         let mut samples = None;
         let mut sizes = None;
+        let mut same_sizes = None;
+        let mut distinct_sizes = None;
         let mut json_path = None;
         let mut warmup_proofs = false;
 
@@ -226,7 +230,30 @@ impl RunConfig {
                     let text = value
                         .to_str()
                         .context("--sizes value must be valid UTF-8")?;
-                    sizes = Some(parse_sizes(text)?);
+                    sizes = Some(parse_sizes("--sizes", text, MAX_DISTINCT_CLAIMS)?);
+                }
+                argument if argument == OsStr::new("--same-sizes") => {
+                    ensure!(
+                        same_sizes.is_none(),
+                        "--same-sizes may only be supplied once"
+                    );
+                    let value = option_value("--same-sizes", arguments.next())?;
+                    let text = value
+                        .to_str()
+                        .context("--same-sizes value must be valid UTF-8")?;
+                    same_sizes = Some(parse_sizes("--same-sizes", text, MAX_SAME_CLAIM_SIGNERS)?);
+                }
+                argument if argument == OsStr::new("--distinct-sizes") => {
+                    ensure!(
+                        distinct_sizes.is_none(),
+                        "--distinct-sizes may only be supplied once"
+                    );
+                    let value = option_value("--distinct-sizes", arguments.next())?;
+                    let text = value
+                        .to_str()
+                        .context("--distinct-sizes value must be valid UTF-8")?;
+                    distinct_sizes =
+                        Some(parse_sizes("--distinct-sizes", text, MAX_DISTINCT_CLAIMS)?);
                 }
                 argument if argument == OsStr::new("--json") => {
                     ensure!(json_path.is_none(), "--json may only be supplied once");
@@ -240,16 +267,37 @@ impl RunConfig {
                 }
                 _ => {
                     return Err(anyhow!(
-                        "unknown argument `{}`; expected --samples, --sizes, --json, or --warmup-proofs",
+                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --json, or --warmup-proofs",
                         argument.to_string_lossy()
                     ));
                 }
             }
         }
 
+        if sizes.is_some() {
+            ensure!(
+                same_sizes.is_none(),
+                "--sizes cannot be combined with --same-sizes"
+            );
+            ensure!(
+                distinct_sizes.is_none(),
+                "--sizes cannot be combined with --distinct-sizes"
+            );
+        }
+
+        let default_sizes = || vec![1, 8, 16];
+        let (same_sizes, distinct_sizes) = if let Some(sizes) = sizes {
+            (sizes.clone(), sizes)
+        } else {
+            (
+                same_sizes.unwrap_or_else(default_sizes),
+                distinct_sizes.unwrap_or_else(default_sizes),
+            )
+        };
         Ok(Self {
             samples: samples.unwrap_or(3),
-            sizes: sizes.unwrap_or_else(|| vec![1, 8, 16]),
+            same_sizes,
+            distinct_sizes,
             json_path,
             warmup_proofs,
         })
@@ -265,26 +313,29 @@ fn option_value(option: &str, value: Option<OsString>) -> Result<OsString> {
     Ok(value)
 }
 
-fn parse_sizes(value: &str) -> Result<Vec<usize>> {
-    ensure!(!value.is_empty(), "--sizes requires a comma-separated list");
+fn parse_sizes(option: &str, value: &str, maximum: usize) -> Result<Vec<usize>> {
+    ensure!(
+        !value.is_empty(),
+        "{option} requires a comma-separated list"
+    );
 
     let mut sizes = Vec::new();
     for component in value.split(',') {
         ensure!(
             !component.is_empty(),
-            "--sizes contains an empty list entry"
+            "{option} contains an empty list entry"
         );
         let size = component
             .parse::<usize>()
-            .with_context(|| format!("invalid --sizes entry `{component}`"))?;
-        ensure!(size > 0, "--sizes entries must be greater than zero");
+            .with_context(|| format!("invalid {option} entry `{component}`"))?;
+        ensure!(size > 0, "{option} entries must be greater than zero");
         ensure!(
-            size <= MAX_DISTINCT_CLAIMS,
-            "--sizes entry {size} exceeds maximum {MAX_DISTINCT_CLAIMS}"
+            size <= maximum,
+            "{option} entry {size} exceeds maximum {maximum}"
         );
         ensure!(
             !sizes.contains(&size),
-            "--sizes contains duplicate entry {size}"
+            "{option} contains duplicate entry {size}"
         );
         sizes.push(size);
     }

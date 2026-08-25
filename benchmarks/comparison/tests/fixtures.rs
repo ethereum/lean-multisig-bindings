@@ -1,4 +1,6 @@
-use lean_multisig_comparison::{deterministic_key_material, FixtureSet, MAX_DISTINCT_CLAIMS};
+use lean_multisig_comparison::{
+    deterministic_key_material, FixtureSet, MAX_DISTINCT_CLAIMS, MAX_SAME_CLAIM_SIGNERS,
+};
 
 #[test]
 fn fixtures_have_the_requested_unique_signers() {
@@ -15,6 +17,21 @@ fn fixtures_have_the_requested_unique_signers() {
         fixtures.bls_public_keys()[0].serialize(),
         fixtures.bls_public_keys()[1].serialize()
     );
+}
+
+#[test]
+#[ignore = "validates 512 XMSS fixtures and is intentionally slow"]
+fn same_claim_fixtures_support_the_expanded_signer_limit() {
+    let fixtures = FixtureSet::same_claim(MAX_SAME_CLAIM_SIGNERS).unwrap();
+
+    assert_eq!(fixtures.lean_claims().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.lean_keys().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.lean_signatures().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.lean_public_keys().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.bls_messages().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.bls_keys().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.bls_signatures().len(), MAX_SAME_CLAIM_SIGNERS);
+    assert_eq!(fixtures.bls_public_keys().len(), MAX_SAME_CLAIM_SIGNERS);
 }
 
 #[test]

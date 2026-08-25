@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use lean_multisig_comparison::{
     BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
-    LIGHTHOUSE_REVISION, MAX_DISTINCT_CLAIMS,
+    LIGHTHOUSE_REVISION, MAX_SAME_CLAIM_SIGNERS,
 };
 
 #[test]
@@ -46,6 +46,21 @@ fn comparison_report_calculates_ratio_from_medians() {
 }
 
 #[test]
+fn comparison_report_accepts_the_expanded_same_claim_limit() {
+    let summary = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
+
+    assert!(ComparisonReport::new(
+        "same_claim_aggregate",
+        MAX_SAME_CLAIM_SIGNERS,
+        summary.clone(),
+        summary,
+        1,
+        1,
+    )
+    .is_ok());
+}
+
+#[test]
 fn comparison_report_rejects_zero_lighthouse_median() {
     let lean = SampleSummary::from_durations([Duration::from_millis(30)]).unwrap();
     let lighthouse = SampleSummary {
@@ -74,7 +89,7 @@ fn comparison_report_rejects_zero_sizes() {
     .is_err());
     assert!(ComparisonReport::new(
         "same_claim_aggregate",
-        MAX_DISTINCT_CLAIMS + 1,
+        MAX_SAME_CLAIM_SIGNERS + 1,
         summary.clone(),
         summary.clone(),
         1,
@@ -100,7 +115,8 @@ fn config_defaults_to_practical_sizes_and_three_samples() {
     let config = RunConfig::parse_from(["slow-comparison"]).unwrap();
 
     assert_eq!(config.samples, 3);
-    assert_eq!(config.sizes, vec![1, 8, 16]);
+    assert_eq!(config.same_sizes, vec![1, 8, 16]);
+    assert_eq!(config.distinct_sizes, vec![1, 8, 16]);
     assert!(!config.warmup_proofs);
 }
 
@@ -119,9 +135,77 @@ fn config_accepts_samples_sizes_and_json_path() {
     .unwrap();
 
     assert_eq!(config.samples, 2);
-    assert_eq!(config.sizes, vec![1, 8]);
+    assert_eq!(config.same_sizes, vec![1, 8]);
+    assert_eq!(config.distinct_sizes, vec![1, 8]);
     assert_eq!(config.json_path.unwrap().to_str(), Some("/tmp/report.json"));
     assert!(config.warmup_proofs);
+}
+
+#[test]
+fn config_accepts_independent_same_and_distinct_sizes() {
+    let config = RunConfig::parse_from([
+        "slow-comparison",
+        "--same-sizes",
+        "32,64,128,256,512",
+        "--distinct-sizes",
+        "1,8,16",
+    ])
+    .unwrap();
+
+    assert_eq!(config.same_sizes, vec![32, 64, 128, 256, 512]);
+    assert_eq!(config.distinct_sizes, vec![1, 8, 16]);
+}
+
+#[test]
+fn config_defaults_the_size_axis_that_is_not_overridden() {
+    let same_only = RunConfig::parse_from(["slow-comparison", "--same-sizes", "32,512"]).unwrap();
+    assert_eq!(same_only.same_sizes, vec![32, 512]);
+    assert_eq!(same_only.distinct_sizes, vec![1, 8, 16]);
+
+    let distinct_only =
+        RunConfig::parse_from(["slow-comparison", "--distinct-sizes", "1,8"]).unwrap();
+    assert_eq!(distinct_only.same_sizes, vec![1, 8, 16]);
+    assert_eq!(distinct_only.distinct_sizes, vec![1, 8]);
+}
+
+#[test]
+fn config_rejects_sizes_shorthand_with_specific_size_options() {
+    let same_error =
+        RunConfig::parse_from(["slow-comparison", "--sizes", "1,8", "--same-sizes", "32,64"])
+            .unwrap_err();
+    assert_eq!(
+        same_error.to_string(),
+        "--sizes cannot be combined with --same-sizes"
+    );
+
+    let distinct_error = RunConfig::parse_from([
+        "slow-comparison",
+        "--distinct-sizes",
+        "1,8",
+        "--sizes",
+        "1,8",
+    ])
+    .unwrap_err();
+    assert_eq!(
+        distinct_error.to_string(),
+        "--sizes cannot be combined with --distinct-sizes"
+    );
+}
+
+#[test]
+fn config_reports_the_exact_independent_size_limits() {
+    let same_error = RunConfig::parse_from(["slow-comparison", "--same-sizes", "513"]).unwrap_err();
+    assert_eq!(
+        same_error.to_string(),
+        "--same-sizes entry 513 exceeds maximum 512"
+    );
+
+    let distinct_error =
+        RunConfig::parse_from(["slow-comparison", "--distinct-sizes", "17"]).unwrap_err();
+    assert_eq!(
+        distinct_error.to_string(),
+        "--distinct-sizes entry 17 exceeds maximum 16"
+    );
 }
 
 #[test]
@@ -137,6 +221,14 @@ fn config_rejects_unknown_repeated_and_missing_options() {
         vec!["slow-comparison", "--unknown"],
         vec!["slow-comparison", "--samples", "2", "--samples", "3"],
         vec!["slow-comparison", "--sizes", "1", "--sizes", "8"],
+        vec!["slow-comparison", "--same-sizes", "1", "--same-sizes", "8"],
+        vec![
+            "slow-comparison",
+            "--distinct-sizes",
+            "1",
+            "--distinct-sizes",
+            "8",
+        ],
         vec![
             "slow-comparison",
             "--json",
@@ -146,6 +238,8 @@ fn config_rejects_unknown_repeated_and_missing_options() {
         ],
         vec!["slow-comparison", "--samples"],
         vec!["slow-comparison", "--sizes"],
+        vec!["slow-comparison", "--same-sizes"],
+        vec!["slow-comparison", "--distinct-sizes"],
         vec!["slow-comparison", "--json"],
         vec!["slow-comparison", "--warmup-proofs", "--warmup-proofs"],
     ] {
@@ -164,6 +258,8 @@ fn unknown_option_error_lists_the_proof_warmup_flag() {
 fn config_rejects_malformed_and_duplicate_sizes() {
     for sizes in ["", "1,", ",1", "1,,8", "one", "1,1"] {
         assert!(RunConfig::parse_from(["slow-comparison", "--sizes", sizes]).is_err());
+        assert!(RunConfig::parse_from(["slow-comparison", "--same-sizes", sizes]).is_err());
+        assert!(RunConfig::parse_from(["slow-comparison", "--distinct-sizes", sizes]).is_err());
     }
 }
 

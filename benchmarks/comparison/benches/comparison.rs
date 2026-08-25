@@ -3,7 +3,8 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use lean_multisig_comparison::{FixtureSet, MAX_DISTINCT_CLAIMS};
 
-const SIZES: [usize; 3] = [1, 8, 16];
+const SAME_CLAIM_SIZES: [usize; 8] = [1, 8, 16, 32, 64, 128, 256, 512];
+const DISTINCT_CLAIM_SIZES: [usize; 3] = [1, 8, 16];
 
 fn aggregate_bls(signatures: &[lighthouse_bls::Signature]) -> lighthouse_bls::AggregateSignature {
     let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
@@ -147,7 +148,7 @@ fn single_operations(criterion: &mut Criterion) {
 
 fn lighthouse_same_claim_aggregate(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("lighthouse_same_claim_aggregate");
-    for size in SIZES {
+    for size in SAME_CLAIM_SIZES {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(size),
@@ -174,7 +175,7 @@ fn lighthouse_same_claim_aggregate(criterion: &mut Criterion) {
 
 fn lighthouse_same_claim_verify(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("lighthouse_same_claim_verify");
-    for size in SIZES {
+    for size in SAME_CLAIM_SIZES {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(size),
@@ -201,7 +202,7 @@ fn lighthouse_same_claim_verify(criterion: &mut Criterion) {
 
 fn lighthouse_distinct_claim_aggregate(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("lighthouse_distinct_claim_aggregate");
-    for size in SIZES {
+    for size in DISTINCT_CLAIM_SIZES {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(size),
@@ -228,7 +229,7 @@ fn lighthouse_distinct_claim_aggregate(criterion: &mut Criterion) {
 
 fn lighthouse_distinct_claim_verify(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("lighthouse_distinct_claim_verify");
-    for size in SIZES {
+    for size in DISTINCT_CLAIM_SIZES {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(size),
@@ -255,7 +256,7 @@ fn lighthouse_distinct_claim_verify(criterion: &mut Criterion) {
 
 fn lighthouse_signature_sets_verify(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("lighthouse_signature_sets_verify");
-    for size in SIZES {
+    for size in DISTINCT_CLAIM_SIZES {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(size),

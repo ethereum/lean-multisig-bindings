@@ -22,10 +22,11 @@ fn main() -> Result<()> {
 fn run(config: RunConfig) -> Result<()> {
     lean_multisig::setup();
 
-    let mut comparisons = Vec::with_capacity(config.sizes.len() * 4);
-    let mut supplemental = Vec::with_capacity(config.sizes.len());
+    let mut comparisons =
+        Vec::with_capacity((config.same_sizes.len() + config.distinct_sizes.len()) * 2);
+    let mut supplemental = Vec::with_capacity(config.distinct_sizes.len());
 
-    for &size in &config.sizes {
+    for &size in &config.same_sizes {
         let same_claim = FixtureSet::same_claim(size).with_context(|| {
             format!("failed to build same-claim fixtures for input size {size}")
         })?;
@@ -53,7 +54,9 @@ fn run(config: RunConfig) -> Result<()> {
             config.samples,
             size,
         )?);
+    }
 
+    for &size in &config.distinct_sizes {
         let distinct_claims = FixtureSet::distinct_claims(size).with_context(|| {
             format!("failed to build distinct-claim fixtures for input size {size}")
         })?;
