@@ -44,13 +44,23 @@ jobs:
         shell: bash
         run: |
           mkdir -p benchmark-artifacts/fast
+          lighthouse_revision=$(
+            sed -n 's/^lighthouse-bls = .*rev = "\([0-9a-f][0-9a-f]*\)".*$/\1/p' \
+              benchmarks/comparison/Cargo.toml
+          )
+          if ! printf '%s\n' "$lighthouse_revision" | grep -Eq '^[0-9a-f]{40}$' \
+            || [[ $(printf '%s\n' "$lighthouse_revision" | wc -l) -ne 1 ]]; then
+            echo 'Cargo.toml must contain exactly one 40-hex Lighthouse revision' >&2
+            exit 1
+          fi
           {
             echo "commit=$GITHUB_SHA"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
-            echo "runner_image=${ImageOS:-unknown}"
+            echo "runner_image_os=${ImageOS:-unknown}"
+            echo "runner_image_version=${ImageVersion:-unknown}"
             echo "kernel=$(uname -srvmo)"
-            echo "lighthouse_revision=e423a66763bb1bd780492d635123f208d80c3538"
+            echo "lighthouse_revision=$lighthouse_revision"
             echo "suite=fast"
             echo "samples=criterion-default"
             echo "same_sizes=1,8,16,32,64,128,256,512"
@@ -111,7 +121,7 @@ jobs:
 
   slow:
     name: Slow proof comparison benchmarks
-    if: contains(github.event.pull_request.labels.*.name, 'benchmark-slow')
+    if: contains(github.event.pull_request.labels.*.name, 'benchmark-slow') && (github.event.action != 'labeled' || github.event.label.name == 'benchmark-slow')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -130,13 +140,23 @@ jobs:
         shell: bash
         run: |
           mkdir -p benchmark-artifacts/slow
+          lighthouse_revision=$(
+            sed -n 's/^lighthouse-bls = .*rev = "\([0-9a-f][0-9a-f]*\)".*$/\1/p' \
+              benchmarks/comparison/Cargo.toml
+          )
+          if ! printf '%s\n' "$lighthouse_revision" | grep -Eq '^[0-9a-f]{40}$' \
+            || [[ $(printf '%s\n' "$lighthouse_revision" | wc -l) -ne 1 ]]; then
+            echo 'Cargo.toml must contain exactly one 40-hex Lighthouse revision' >&2
+            exit 1
+          fi
           {
             echo "commit=$GITHUB_SHA"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
-            echo "runner_image=${ImageOS:-unknown}"
+            echo "runner_image_os=${ImageOS:-unknown}"
+            echo "runner_image_version=${ImageVersion:-unknown}"
             echo "kernel=$(uname -srvmo)"
-            echo "lighthouse_revision=e423a66763bb1bd780492d635123f208d80c3538"
+            echo "lighthouse_revision=$lighthouse_revision"
             echo "suite=slow"
             echo "samples=3"
             echo "same_sizes=1,8,16"
