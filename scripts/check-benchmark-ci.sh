@@ -78,11 +78,14 @@ image_os_entries=$(grep -Fc 'runner_image_os=${ImageOS:-unknown}' "$pr_workflow"
 image_version_entries=$(grep -Fc 'runner_image_version=${ImageVersion:-unknown}' "$pr_workflow")
 [ "$image_os_entries" -eq 2 ] || fail "$pr_workflow: fast and slow jobs must record runner image OS"
 [ "$image_version_entries" -eq 2 ] || fail "$pr_workflow: fast and slow jobs must record runner image version"
-reject_text "$pr_workflow" 'e423a66763bb1bd780492d635123f208d80c3538' 'hardcoded Lighthouse revision'
+reject_text "$pr_workflow" 'lighthouse_revision=[0-9a-f]{40}' 'hardcoded Lighthouse revision'
 require_literal "$pr_workflow" 'benchmarks/comparison/Cargo.toml' 'Lighthouse revision manifest source'
 require_literal "$pr_workflow" "grep -Eq '^[0-9a-f]{40}$'" 'exact Lighthouse revision validation'
+require_literal "$pr_workflow" 'echo "lighthouse_revision=$lighthouse_revision"' 'derived Lighthouse revision emission'
 lighthouse_manifest_reads=$(grep -Fc 'benchmarks/comparison/Cargo.toml' "$pr_workflow")
+lighthouse_revision_emissions=$(grep -Fc 'echo "lighthouse_revision=$lighthouse_revision"' "$pr_workflow")
 [ "$lighthouse_manifest_reads" -eq 2 ] || fail "$pr_workflow: fast and slow jobs must derive the Lighthouse revision from the manifest"
+[ "$lighthouse_revision_emissions" -eq 2 ] || fail "$pr_workflow: fast and slow jobs must emit their derived Lighthouse revision"
 require_text "$pr_workflow" 'de0fac2e4500dabe0009e67214ff5f5447ce83dd' 'pinned checkout action'
 require_text "$pr_workflow" '35d8a35b823d6c20db516f5c35eb0a9640942c17' 'pinned Rust toolchain action'
 require_text "$pr_workflow" '401aff9a7a08acb9d27b64936a90db81024cff97' 'pinned Rust cache action'
