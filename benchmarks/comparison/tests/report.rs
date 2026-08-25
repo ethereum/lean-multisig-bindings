@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use lean_multisig_comparison::{
     BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
-    MAX_DISTINCT_CLAIMS,
+    LIGHTHOUSE_REVISION, MAX_DISTINCT_CLAIMS,
 };
 
 #[test]
@@ -101,6 +101,7 @@ fn config_defaults_to_practical_sizes_and_three_samples() {
 
     assert_eq!(config.samples, 3);
     assert_eq!(config.sizes, vec![1, 8, 16]);
+    assert!(!config.warmup_proofs);
 }
 
 #[test]
@@ -113,12 +114,14 @@ fn config_accepts_samples_sizes_and_json_path() {
         "1,8",
         "--json",
         "/tmp/report.json",
+        "--warmup-proofs",
     ])
     .unwrap();
 
     assert_eq!(config.samples, 2);
     assert_eq!(config.sizes, vec![1, 8]);
     assert_eq!(config.json_path.unwrap().to_str(), Some("/tmp/report.json"));
+    assert!(config.warmup_proofs);
 }
 
 #[test]
@@ -144,9 +147,17 @@ fn config_rejects_unknown_repeated_and_missing_options() {
         vec!["slow-comparison", "--samples"],
         vec!["slow-comparison", "--sizes"],
         vec!["slow-comparison", "--json"],
+        vec!["slow-comparison", "--warmup-proofs", "--warmup-proofs"],
     ] {
         assert!(RunConfig::parse_from(arguments).is_err());
     }
+}
+
+#[test]
+fn unknown_option_error_lists_the_proof_warmup_flag() {
+    let error = RunConfig::parse_from(["slow-comparison", "--unknown"]).unwrap_err();
+
+    assert!(error.to_string().contains("--warmup-proofs"));
 }
 
 #[test]
@@ -163,6 +174,7 @@ fn benchmark_report_round_trips_through_json() {
     let report = BenchmarkReport {
         lighthouse_revision: "e423a66763bb1bd780492d635123f208d80c3538".to_owned(),
         samples: 1,
+        proof_warmup: true,
         comparisons: vec![ComparisonReport::new(
             "same_claim_aggregate",
             8,
@@ -183,6 +195,19 @@ fn benchmark_report_round_trips_through_json() {
     let restored: BenchmarkReport = serde_json::from_str(&json).unwrap();
 
     assert_eq!(restored, report);
+    assert!(restored.proof_warmup);
+}
+
+#[test]
+fn reported_lighthouse_revision_matches_manifest_pin() {
+    let manifest = include_str!("../Cargo.toml");
+    let expected = format!("rev = \"{LIGHTHOUSE_REVISION}\"");
+    let dependency = manifest
+        .lines()
+        .find(|line| line.starts_with("lighthouse-bls ="))
+        .expect("manifest must contain the Lighthouse BLS dependency");
+
+    assert!(dependency.contains(&expected));
 }
 
 #[test]
@@ -192,6 +217,7 @@ fn table_contains_paired_measurements_and_artifact_sizes() {
     let report = BenchmarkReport {
         lighthouse_revision: "revision".to_owned(),
         samples: 1,
+        proof_warmup: false,
         comparisons: vec![ComparisonReport::new(
             "same_claim_aggregate",
             8,
@@ -223,6 +249,7 @@ fn table_visibly_labels_supplemental_rows_as_lighthouse_only() {
     let report = BenchmarkReport {
         lighthouse_revision: "revision".to_owned(),
         samples: 1,
+        proof_warmup: false,
         comparisons: vec![],
         supplemental: vec![SupplementalReport {
             workload: "verify_signature_sets".to_owned(),

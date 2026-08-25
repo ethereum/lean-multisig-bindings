@@ -1,12 +1,17 @@
-use std::{env, fs, time::Instant};
-
-use anyhow::{ensure, Context, Result};
-use lean_multisig_comparison::{
-    BenchmarkReport, ComparisonReport, FixtureSet, RunConfig, SampleSummary, SupplementalReport,
+use std::{
+    env, fs,
+    hint::black_box,
+    time::{Duration, Instant},
 };
 
-const LIGHTHOUSE_REVISION: &str = "e423a66763bb1bd780492d635123f208d80c3538";
+use anyhow::{bail, ensure, Context, Result};
+use lean_multisig_comparison::{
+    BenchmarkReport, ComparisonReport, FixtureSet, RunConfig, SampleSummary, SupplementalReport,
+    LIGHTHOUSE_REVISION,
+};
+
 const SEMANTIC_WARNING: &str = "WARNING: leanMultisig aggregation generates zkVM proofs, while Lighthouse BLS aggregation combines elliptic-curve points; these operations do not have identical security semantics.";
+const MIN_LIGHTHOUSE_BATCH_DURATION: Duration = Duration::from_millis(10);
 
 fn main() -> Result<()> {
     let config =
@@ -35,6 +40,7 @@ fn run(config: RunConfig) -> Result<()> {
             &same_claim_bls_public_keys,
             config.samples,
             size,
+            config.warmup_proofs,
         )?;
         comparisons.push(aggregate_row);
         comparisons.push(measure_same_claim_verify(
@@ -70,6 +76,7 @@ fn run(config: RunConfig) -> Result<()> {
             &distinct_bls_public_keys,
             config.samples,
             size,
+            config.warmup_proofs,
         )?;
         comparisons.push(aggregate_row);
         comparisons.push(measure_distinct_claim_verify(
@@ -91,12 +98,22 @@ fn run(config: RunConfig) -> Result<()> {
     let report = BenchmarkReport {
         lighthouse_revision: LIGHTHOUSE_REVISION.to_owned(),
         samples: config.samples,
+        proof_warmup: config.warmup_proofs,
         comparisons,
         supplemental,
     };
 
     println!("{SEMANTIC_WARNING}");
     println!("Pinned Lighthouse revision: {LIGHTHOUSE_REVISION}");
+    if config.warmup_proofs {
+        println!(
+            "PROOF TIMING MODE: steady-state (--warmup-proofs; one verified untimed Lean proof per aggregation workload and size)."
+        );
+    } else {
+        println!(
+            "PROOF TIMING MODE: first-use-inclusive (default; no untimed Lean proof generation)."
+        );
+    }
     if config.samples == 1 {
         println!("NOTE: a one-sample smoke run is not a publishable benchmark result.");
     }
@@ -119,6 +136,7 @@ fn measure_same_claim_aggregate(
     bls_public_keys: &[&lighthouse_bls::PublicKey],
     samples: usize,
     size: usize,
+    warmup_proofs: bool,
 ) -> Result<(
     ComparisonReport,
     lean_multisig::Signature,
@@ -128,53 +146,87 @@ fn measure_same_claim_aggregate(
     let claim = fixtures.lean_claims()[0];
     let bls_message = fixtures.bls_messages()[0];
 
-    let bls_warmup = aggregate_bls(fixtures.bls_signatures());
-    ensure!(
-        bls_warmup.fast_aggregate_verify(bls_message, bls_public_keys),
-        "{WORKLOAD} (input size {size}): Lighthouse warm-up aggregate failed verification"
-    );
-
-    let lean_inputs = prepare_lean_inputs(fixtures.lean_signatures(), samples);
-    let mut lean_durations = Vec::with_capacity(samples);
-    let mut retained_lean = None;
-    for (sample, signatures) in lean_inputs.into_iter().enumerate() {
-        let start = Instant::now();
-        let aggregate = lean_multisig::aggregate(signatures, &claim);
-        let duration = start.elapsed();
-        let aggregate = aggregate.with_context(|| {
-            format!("{WORKLOAD} (input size {size}, sample {sample}): Lean aggregation failed")
-        })?;
+    let warmup_lean = run_optional_warmup(warmup_proofs, || {
+        let aggregate = lean_multisig::aggregate(fixtures.lean_signatures().to_vec(), &claim)
+            .with_context(|| {
+                format!("{WORKLOAD} (input size {size}): Lean proof warm-up failed")
+            })?;
         lean_multisig::verify(&aggregate, lean_signers, &claim).with_context(|| {
-            format!(
-                "{WORKLOAD} (input size {size}, sample {sample}): Lean aggregate failed post-timing verification"
-            )
+            format!("{WORKLOAD} (input size {size}): Lean proof warm-up failed verification")
         })?;
-        lean_durations.push(duration);
-        retained_lean.get_or_insert(aggregate);
-    }
+        Ok(aggregate)
+    })?;
 
+    let lighthouse_iterations = calibrate_batch_iterations(
+        MIN_LIGHTHOUSE_BATCH_DURATION,
+        |iterations| {
+            let (elapsed, aggregate) = time_last_value_batch(iterations, || {
+                aggregate_bls(black_box(fixtures.bls_signatures()))
+            })?;
+            ensure!(
+                aggregate.fast_aggregate_verify(bls_message, bls_public_keys),
+                "{WORKLOAD} (input size {size}): Lighthouse calibration aggregate failed verification"
+            );
+            Ok(elapsed)
+        },
+    )
+    .with_context(|| {
+        format!("{WORKLOAD} (input size {size}): Lighthouse calibration failed")
+    })?;
+
+    let mut lean_durations = Vec::with_capacity(samples);
     let mut lighthouse_durations = Vec::with_capacity(samples);
+    let mut retained_lean = None;
     let mut retained_lighthouse = None;
-    for sample in 0..samples {
-        let start = Instant::now();
-        let aggregate = aggregate_bls(fixtures.bls_signatures());
-        let duration = start.elapsed();
-        ensure!(
-            aggregate.fast_aggregate_verify(bls_message, bls_public_keys),
-            "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse aggregate failed post-timing verification"
-        );
-        lighthouse_durations.push(duration);
-        retained_lighthouse.get_or_insert(aggregate);
-    }
+    for_each_paired_sample(
+        samples,
+        |sample| {
+            let signatures = fixtures.lean_signatures().to_vec();
+            let start = Instant::now();
+            let aggregate = lean_multisig::aggregate(signatures, &claim);
+            let duration = start.elapsed();
+            let aggregate = aggregate.with_context(|| {
+                format!("{WORKLOAD} (input size {size}, sample {sample}): Lean aggregation failed")
+            })?;
+            lean_multisig::verify(&aggregate, lean_signers, &claim).with_context(|| {
+                format!(
+                    "{WORKLOAD} (input size {size}, sample {sample}): Lean aggregate failed post-timing verification"
+                )
+            })?;
+            lean_durations.push(duration);
+            retained_lean.get_or_insert(aggregate);
+            Ok(())
+        },
+        |sample| {
+            let aggregate = record_batched_sample(
+                &mut lighthouse_durations,
+                lighthouse_iterations,
+                |iterations| {
+                    time_last_value_batch(iterations, || {
+                        aggregate_bls(black_box(fixtures.bls_signatures()))
+                    })
+                },
+                |aggregate| {
+                    ensure!(
+                        aggregate.fast_aggregate_verify(bls_message, bls_public_keys),
+                        "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse aggregate failed post-timing verification"
+                    );
+                    Ok(())
+                },
+            )?;
+            retained_lighthouse.get_or_insert(aggregate);
+            Ok(())
+        },
+    )?;
 
-    let retained_lean = retained_lean.with_context(|| {
+    let timed_lean = retained_lean.with_context(|| {
         format!("{WORKLOAD} (input size {size}): retained no Lean aggregate proof")
     })?;
-    let retained_lighthouse = retained_lighthouse.with_context(|| {
+    let timed_lighthouse = retained_lighthouse.with_context(|| {
         format!("{WORKLOAD} (input size {size}): retained no Lighthouse aggregate signature")
     })?;
-    let lean_artifact_bytes = retained_lean.to_bytes().len();
-    let lighthouse_artifact_bytes = retained_lighthouse.serialize().len();
+    let lean_artifact_bytes = timed_lean.to_bytes().len();
+    let lighthouse_artifact_bytes = timed_lighthouse.serialize().len();
     let report = ComparisonReport::new(
         WORKLOAD,
         size,
@@ -185,7 +237,8 @@ fn measure_same_claim_aggregate(
     )
     .with_context(|| format!("failed to assemble {WORKLOAD} report for input size {size}"))?;
 
-    Ok((report, retained_lean, retained_lighthouse))
+    let verification_lean = warmup_lean.unwrap_or_else(|| timed_lean.clone());
+    Ok((report, verification_lean, timed_lighthouse))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -200,33 +253,59 @@ fn measure_same_claim_verify(
     size: usize,
 ) -> Result<ComparisonReport> {
     const WORKLOAD: &str = "same_claim_verify";
-    ensure!(
-        bls_aggregate.fast_aggregate_verify(bls_message, bls_public_keys),
-        "{WORKLOAD} (input size {size}): Lighthouse warm-up verification failed"
-    );
+    let lighthouse_iterations =
+        calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
+            let (elapsed, all_valid) = time_bool_batch(iterations, || {
+                black_box(bls_aggregate)
+                    .fast_aggregate_verify(black_box(bls_message), black_box(bls_public_keys))
+            })?;
+            ensure!(
+                all_valid,
+                "{WORKLOAD} (input size {size}): Lighthouse calibration verification failed"
+            );
+            Ok(elapsed)
+        })
+        .with_context(|| {
+            format!("{WORKLOAD} (input size {size}): Lighthouse calibration failed")
+        })?;
 
     let mut lean_durations = Vec::with_capacity(samples);
-    for sample in 0..samples {
-        let start = Instant::now();
-        let result = lean_multisig::verify(lean_aggregate, lean_signers, claim);
-        let duration = start.elapsed();
-        result.with_context(|| {
-            format!("{WORKLOAD} (input size {size}, sample {sample}): Lean verification failed")
-        })?;
-        lean_durations.push(duration);
-    }
-
     let mut lighthouse_durations = Vec::with_capacity(samples);
-    for sample in 0..samples {
-        let start = Instant::now();
-        let valid = bls_aggregate.fast_aggregate_verify(bls_message, bls_public_keys);
-        let duration = start.elapsed();
-        ensure!(
-            valid,
-            "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse verification failed"
-        );
-        lighthouse_durations.push(duration);
-    }
+    for_each_paired_sample(
+        samples,
+        |sample| {
+            let start = Instant::now();
+            let result = lean_multisig::verify(lean_aggregate, lean_signers, claim);
+            let duration = start.elapsed();
+            result.with_context(|| {
+                format!("{WORKLOAD} (input size {size}, sample {sample}): Lean verification failed")
+            })?;
+            lean_durations.push(duration);
+            Ok(())
+        },
+        |sample| {
+            record_batched_sample(
+                &mut lighthouse_durations,
+                lighthouse_iterations,
+                |iterations| {
+                    time_bool_batch(iterations, || {
+                        black_box(bls_aggregate).fast_aggregate_verify(
+                            black_box(bls_message),
+                            black_box(bls_public_keys),
+                        )
+                    })
+                },
+                |all_valid| {
+                    ensure!(
+                        *all_valid,
+                        "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse verification batch contained an invalid result"
+                    );
+                    Ok(())
+                },
+            )?;
+            Ok(())
+        },
+    )?;
 
     ComparisonReport::new(
         WORKLOAD,
@@ -246,6 +325,7 @@ fn measure_distinct_claim_aggregate(
     bls_public_keys: &[&lighthouse_bls::PublicKey],
     samples: usize,
     size: usize,
+    warmup_proofs: bool,
 ) -> Result<(
     ComparisonReport,
     lean_multisig::MultiClaimProof,
@@ -253,49 +333,83 @@ fn measure_distinct_claim_aggregate(
 )> {
     const WORKLOAD: &str = "distinct_claim_aggregate";
 
-    let bls_warmup = aggregate_bls(fixtures.bls_signatures());
-    ensure!(
-        bls_warmup.aggregate_verify(bls_messages, bls_public_keys),
-        "{WORKLOAD} (input size {size}): Lighthouse warm-up aggregate failed verification"
-    );
-
-    let lean_inputs = prepare_lean_inputs(fixtures.lean_signatures(), samples);
-    let mut lean_durations = Vec::with_capacity(samples);
-    let mut retained_lean = None;
-    for (sample, signatures) in lean_inputs.into_iter().enumerate() {
-        let start = Instant::now();
-        let aggregate = lean_multisig::merge_claims(signatures);
-        let duration = start.elapsed();
-        let aggregate = aggregate.with_context(|| {
-            format!("{WORKLOAD} (input size {size}, sample {sample}): Lean aggregation failed")
-        })?;
+    let warmup_lean = run_optional_warmup(warmup_proofs, || {
+        let aggregate = lean_multisig::merge_claims(fixtures.lean_signatures().to_vec())
+            .with_context(|| {
+                format!("{WORKLOAD} (input size {size}): Lean proof warm-up failed")
+            })?;
         lean_multisig::verify_claims(&aggregate, lean_expected).with_context(|| {
-            format!(
-                "{WORKLOAD} (input size {size}, sample {sample}): Lean aggregate failed post-timing verification"
-            )
+            format!("{WORKLOAD} (input size {size}): Lean proof warm-up failed verification")
         })?;
-        lean_durations.push(duration);
-        retained_lean.get_or_insert(aggregate);
-    }
+        Ok(aggregate)
+    })?;
 
+    let lighthouse_iterations = calibrate_batch_iterations(
+        MIN_LIGHTHOUSE_BATCH_DURATION,
+        |iterations| {
+            let (elapsed, aggregate) = time_last_value_batch(iterations, || {
+                aggregate_bls(black_box(fixtures.bls_signatures()))
+            })?;
+            ensure!(
+                aggregate.aggregate_verify(bls_messages, bls_public_keys),
+                "{WORKLOAD} (input size {size}): Lighthouse calibration aggregate failed verification"
+            );
+            Ok(elapsed)
+        },
+    )
+    .with_context(|| {
+        format!("{WORKLOAD} (input size {size}): Lighthouse calibration failed")
+    })?;
+
+    let mut lean_durations = Vec::with_capacity(samples);
     let mut lighthouse_durations = Vec::with_capacity(samples);
+    let mut retained_lean = None;
     let mut retained_lighthouse = None;
-    for sample in 0..samples {
-        let start = Instant::now();
-        let aggregate = aggregate_bls(fixtures.bls_signatures());
-        let duration = start.elapsed();
-        ensure!(
-            aggregate.aggregate_verify(bls_messages, bls_public_keys),
-            "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse aggregate failed post-timing verification"
-        );
-        lighthouse_durations.push(duration);
-        retained_lighthouse.get_or_insert(aggregate);
-    }
+    for_each_paired_sample(
+        samples,
+        |sample| {
+            let signatures = fixtures.lean_signatures().to_vec();
+            let start = Instant::now();
+            let aggregate = lean_multisig::merge_claims(signatures);
+            let duration = start.elapsed();
+            let aggregate = aggregate.with_context(|| {
+                format!("{WORKLOAD} (input size {size}, sample {sample}): Lean aggregation failed")
+            })?;
+            lean_multisig::verify_claims(&aggregate, lean_expected).with_context(|| {
+                format!(
+                    "{WORKLOAD} (input size {size}, sample {sample}): Lean aggregate failed post-timing verification"
+                )
+            })?;
+            lean_durations.push(duration);
+            retained_lean.get_or_insert(aggregate);
+            Ok(())
+        },
+        |sample| {
+            let aggregate = record_batched_sample(
+                &mut lighthouse_durations,
+                lighthouse_iterations,
+                |iterations| {
+                    time_last_value_batch(iterations, || {
+                        aggregate_bls(black_box(fixtures.bls_signatures()))
+                    })
+                },
+                |aggregate| {
+                    ensure!(
+                        aggregate.aggregate_verify(bls_messages, bls_public_keys),
+                        "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse aggregate failed post-timing verification"
+                    );
+                    Ok(())
+                },
+            )?;
+            retained_lighthouse.get_or_insert(aggregate);
+            Ok(())
+        },
+    )?;
 
-    let retained_lean = retained_lean.with_context(|| {
+    let timed_lean = retained_lean.with_context(|| {
         format!("{WORKLOAD} (input size {size}): retained no Lean aggregate proof")
     })?;
-    let retained_lighthouse = retained_lighthouse.with_context(|| {
+    let timed_lighthouse = retained_lighthouse.with_context(|| {
         format!("{WORKLOAD} (input size {size}): retained no Lighthouse aggregate signature")
     })?;
     let report = ComparisonReport::new(
@@ -303,12 +417,13 @@ fn measure_distinct_claim_aggregate(
         size,
         summarize(lean_durations, WORKLOAD, size, "Lean")?,
         summarize(lighthouse_durations, WORKLOAD, size, "Lighthouse")?,
-        retained_lean.to_bytes().len(),
-        retained_lighthouse.serialize().len(),
+        timed_lean.to_bytes().len(),
+        timed_lighthouse.serialize().len(),
     )
     .with_context(|| format!("failed to assemble {WORKLOAD} report for input size {size}"))?;
 
-    Ok((report, retained_lean, retained_lighthouse))
+    let verification_lean = warmup_lean.unwrap_or_else(|| timed_lean.clone());
+    Ok((report, verification_lean, timed_lighthouse))
 }
 
 fn measure_distinct_claim_verify(
@@ -321,33 +436,57 @@ fn measure_distinct_claim_verify(
     size: usize,
 ) -> Result<ComparisonReport> {
     const WORKLOAD: &str = "distinct_claim_verify";
-    ensure!(
-        bls_aggregate.aggregate_verify(bls_messages, bls_public_keys),
-        "{WORKLOAD} (input size {size}): Lighthouse warm-up verification failed"
-    );
+    let lighthouse_iterations =
+        calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
+            let (elapsed, all_valid) = time_bool_batch(iterations, || {
+                black_box(bls_aggregate)
+                    .aggregate_verify(black_box(bls_messages), black_box(bls_public_keys))
+            })?;
+            ensure!(
+                all_valid,
+                "{WORKLOAD} (input size {size}): Lighthouse calibration verification failed"
+            );
+            Ok(elapsed)
+        })
+        .with_context(|| {
+            format!("{WORKLOAD} (input size {size}): Lighthouse calibration failed")
+        })?;
 
     let mut lean_durations = Vec::with_capacity(samples);
-    for sample in 0..samples {
-        let start = Instant::now();
-        let result = lean_multisig::verify_claims(lean_aggregate, lean_expected);
-        let duration = start.elapsed();
-        result.with_context(|| {
-            format!("{WORKLOAD} (input size {size}, sample {sample}): Lean verification failed")
-        })?;
-        lean_durations.push(duration);
-    }
-
     let mut lighthouse_durations = Vec::with_capacity(samples);
-    for sample in 0..samples {
-        let start = Instant::now();
-        let valid = bls_aggregate.aggregate_verify(bls_messages, bls_public_keys);
-        let duration = start.elapsed();
-        ensure!(
-            valid,
-            "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse verification failed"
-        );
-        lighthouse_durations.push(duration);
-    }
+    for_each_paired_sample(
+        samples,
+        |sample| {
+            let start = Instant::now();
+            let result = lean_multisig::verify_claims(lean_aggregate, lean_expected);
+            let duration = start.elapsed();
+            result.with_context(|| {
+                format!("{WORKLOAD} (input size {size}, sample {sample}): Lean verification failed")
+            })?;
+            lean_durations.push(duration);
+            Ok(())
+        },
+        |sample| {
+            record_batched_sample(
+                &mut lighthouse_durations,
+                lighthouse_iterations,
+                |iterations| {
+                    time_bool_batch(iterations, || {
+                        black_box(bls_aggregate)
+                            .aggregate_verify(black_box(bls_messages), black_box(bls_public_keys))
+                    })
+                },
+                |all_valid| {
+                    ensure!(
+                        *all_valid,
+                        "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse verification batch contained an invalid result"
+                    );
+                    Ok(())
+                },
+            )?;
+            Ok(())
+        },
+    )?;
 
     ComparisonReport::new(
         WORKLOAD,
@@ -367,21 +506,39 @@ fn measure_signature_sets_verify(
 ) -> Result<SupplementalReport> {
     const WORKLOAD: &str = "verify_signature_sets";
     let signature_sets = fixtures.bls_signature_sets();
-    ensure!(
-        lighthouse_bls::verify_signature_sets(signature_sets.iter()),
-        "{WORKLOAD} (input size {size}): Lighthouse warm-up verification failed"
-    );
+    let lighthouse_iterations =
+        calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
+            let (elapsed, all_valid) = time_bool_batch(iterations, || {
+                lighthouse_bls::verify_signature_sets(black_box(signature_sets.iter()))
+            })?;
+            ensure!(
+                all_valid,
+                "{WORKLOAD} (input size {size}): Lighthouse calibration verification failed"
+            );
+            Ok(elapsed)
+        })
+        .with_context(|| {
+            format!("{WORKLOAD} (input size {size}): Lighthouse calibration failed")
+        })?;
 
     let mut durations = Vec::with_capacity(samples);
     for sample in 0..samples {
-        let start = Instant::now();
-        let valid = lighthouse_bls::verify_signature_sets(signature_sets.iter());
-        let duration = start.elapsed();
-        ensure!(
-            valid,
-            "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse verification failed"
-        );
-        durations.push(duration);
+        record_batched_sample(
+            &mut durations,
+            lighthouse_iterations,
+            |iterations| {
+                time_bool_batch(iterations, || {
+                    lighthouse_bls::verify_signature_sets(black_box(signature_sets.iter()))
+                })
+            },
+            |all_valid| {
+                ensure!(
+                    *all_valid,
+                    "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse verification batch contained an invalid result"
+                );
+                Ok(())
+            },
+        )?;
     }
 
     Ok(SupplementalReport {
@@ -399,13 +556,131 @@ fn aggregate_bls(signatures: &[lighthouse_bls::Signature]) -> lighthouse_bls::Ag
     aggregate
 }
 
-fn prepare_lean_inputs(
-    signatures: &[lean_multisig::Signature],
+fn calibrate_batch_iterations(
+    minimum_duration: Duration,
+    mut measure_batch: impl FnMut(usize) -> Result<Duration>,
+) -> Result<usize> {
+    const MAX_STEPS: usize = 8;
+    ensure!(
+        !minimum_duration.is_zero(),
+        "minimum batch duration must be greater than zero"
+    );
+
+    let mut iterations = 1usize;
+    for _ in 0..MAX_STEPS {
+        let elapsed = measure_batch(iterations)?;
+        ensure!(
+            !elapsed.is_zero(),
+            "calibration batch duration must be greater than zero"
+        );
+        if elapsed >= minimum_duration {
+            return Ok(iterations);
+        }
+
+        let numerator = minimum_duration
+            .as_nanos()
+            .checked_mul(iterations as u128)
+            .context("calibration iteration estimate overflowed")?;
+        let denominator = elapsed.as_nanos();
+        let estimated = numerator
+            .checked_add(denominator - 1)
+            .context("calibration iteration estimate overflowed")?
+            / denominator;
+        let estimated =
+            usize::try_from(estimated).context("calibration iteration estimate exceeds usize")?;
+        iterations = estimated.max(
+            iterations
+                .checked_add(1)
+                .context("calibration iteration count overflowed")?,
+        );
+    }
+
+    bail!("failed to calibrate a batch in {MAX_STEPS} steps")
+}
+
+fn normalize_batch_duration(elapsed: Duration, iterations: usize) -> Result<Duration> {
+    ensure!(iterations > 0, "batch iterations must be greater than zero");
+    ensure!(
+        !elapsed.is_zero(),
+        "batch duration must be greater than zero"
+    );
+    let nanoseconds = elapsed.as_nanos() / iterations as u128;
+    ensure!(
+        nanoseconds > 0,
+        "normalized per-operation duration rounded to zero"
+    );
+    Ok(Duration::from_nanos(
+        u64::try_from(nanoseconds).context("normalized duration exceeds u64 nanoseconds")?,
+    ))
+}
+
+fn record_batched_sample<T>(
+    durations: &mut Vec<Duration>,
+    iterations: usize,
+    run_batch: impl FnOnce(usize) -> Result<(Duration, T)>,
+    validate: impl FnOnce(&T) -> Result<()>,
+) -> Result<T> {
+    let (elapsed, value) = run_batch(iterations)?;
+    validate(&value)?;
+    let duration = normalize_batch_duration(elapsed, iterations)?;
+    durations.push(duration);
+    Ok(value)
+}
+
+fn time_bool_batch(
+    iterations: usize,
+    mut operation: impl FnMut() -> bool,
+) -> Result<(Duration, bool)> {
+    ensure!(iterations > 0, "batch iterations must be greater than zero");
+    let start = Instant::now();
+    let mut all_valid = true;
+    for _ in 0..iterations {
+        all_valid &= black_box(operation());
+    }
+    Ok((start.elapsed(), all_valid))
+}
+
+fn time_last_value_batch<T>(
+    iterations: usize,
+    mut operation: impl FnMut() -> T,
+) -> Result<(Duration, T)> {
+    ensure!(iterations > 0, "batch iterations must be greater than zero");
+    let start = Instant::now();
+    let mut retained = None;
+    for _ in 0..iterations {
+        retained = Some(black_box(operation()));
+    }
+    let elapsed = start.elapsed();
+    Ok((
+        elapsed,
+        retained.context("batch retained no operation result")?,
+    ))
+}
+
+fn for_each_paired_sample(
     samples: usize,
-) -> Vec<Vec<lean_multisig::Signature>> {
-    std::iter::repeat_with(|| signatures.to_vec())
-        .take(samples)
-        .collect()
+    mut lean: impl FnMut(usize) -> Result<()>,
+    mut lighthouse: impl FnMut(usize) -> Result<()>,
+) -> Result<()> {
+    ensure!(samples > 0, "at least one paired sample is required");
+    for sample in 0..samples {
+        if sample % 2 == 0 {
+            lighthouse(sample)?;
+            lean(sample)?;
+        } else {
+            lean(sample)?;
+            lighthouse(sample)?;
+        }
+    }
+    Ok(())
+}
+
+fn run_optional_warmup<T>(enabled: bool, warmup: impl FnOnce() -> Result<T>) -> Result<Option<T>> {
+    if enabled {
+        warmup().map(Some)
+    } else {
+        Ok(None)
+    }
 }
 
 fn summarize(
@@ -421,15 +696,160 @@ fn summarize(
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, rc::Rc, time::Duration};
+
     use super::*;
 
     #[test]
-    fn prepares_one_owned_lean_input_per_sample() {
-        let fixtures = FixtureSet::same_claim(2).unwrap();
+    fn calibration_scales_batch_and_counts_invocations() {
+        let observed = RefCell::new(Vec::new());
 
-        let prepared = prepare_lean_inputs(fixtures.lean_signatures(), 3);
+        let iterations = calibrate_batch_iterations(Duration::from_millis(10), |iterations| {
+            observed.borrow_mut().push(iterations);
+            Ok(Duration::from_millis(iterations as u64))
+        })
+        .unwrap();
 
-        assert_eq!(prepared.len(), 3);
-        assert!(prepared.iter().all(|input| input.len() == 2));
+        assert_eq!(iterations, 10);
+        assert_eq!(*observed.borrow(), vec![1, 10]);
+    }
+
+    #[test]
+    fn calibration_rejects_zero_target_and_zero_elapsed() {
+        assert!(
+            calibrate_batch_iterations(Duration::ZERO, |_| { Ok(Duration::from_nanos(1)) })
+                .is_err()
+        );
+        assert!(
+            calibrate_batch_iterations(Duration::from_millis(10), |_| { Ok(Duration::ZERO) })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn batch_duration_is_normalized_per_operation() {
+        assert_eq!(
+            normalize_batch_duration(Duration::from_millis(12), 4).unwrap(),
+            Duration::from_millis(3)
+        );
+        assert!(normalize_batch_duration(Duration::ZERO, 1).is_err());
+        assert!(normalize_batch_duration(Duration::from_nanos(1), 0).is_err());
+        assert!(normalize_batch_duration(Duration::from_nanos(1), 2).is_err());
+    }
+
+    #[test]
+    fn batch_recording_counts_invocations_and_excludes_invalid_result() {
+        let mut durations = Vec::new();
+        let mut invocations = 0;
+        let value = record_batched_sample(
+            &mut durations,
+            4,
+            |iterations| {
+                invocations += iterations;
+                Ok((Duration::from_millis(12), true))
+            },
+            |valid| {
+                ensure!(*valid, "invalid batch");
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(value);
+        assert_eq!(invocations, 4);
+        assert_eq!(durations, vec![Duration::from_millis(3)]);
+
+        let error = record_batched_sample(
+            &mut durations,
+            4,
+            |_| Ok((Duration::from_millis(12), false)),
+            |valid| {
+                ensure!(*valid, "invalid batch");
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("invalid batch"));
+        assert_eq!(durations, vec![Duration::from_millis(3)]);
+    }
+
+    #[test]
+    fn timed_bool_batch_invokes_every_operation_and_tracks_any_failure() {
+        let mut invocations = 0;
+        let (_, all_valid) = time_bool_batch(5, || {
+            invocations += 1;
+            invocations != 3
+        })
+        .unwrap();
+
+        assert_eq!(invocations, 5);
+        assert!(!all_valid);
+    }
+
+    #[test]
+    fn timed_last_value_batch_invokes_every_operation_and_retains_last() {
+        let mut invocations = 0;
+        let (_, retained) = time_last_value_batch(4, || {
+            invocations += 1;
+            invocations
+        })
+        .unwrap();
+
+        assert_eq!(invocations, 4);
+        assert_eq!(retained, 4);
+    }
+
+    #[test]
+    fn paired_samples_alternate_bls_and_lean_order() {
+        let order = Rc::new(RefCell::new(Vec::new()));
+        let lean_order = Rc::clone(&order);
+        let lighthouse_order = Rc::clone(&order);
+
+        for_each_paired_sample(
+            3,
+            |sample| {
+                lean_order.borrow_mut().push(format!("lean-{sample}"));
+                Ok(())
+            },
+            |sample| {
+                lighthouse_order
+                    .borrow_mut()
+                    .push(format!("lighthouse-{sample}"));
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            *order.borrow(),
+            vec![
+                "lighthouse-0",
+                "lean-0",
+                "lean-1",
+                "lighthouse-1",
+                "lighthouse-2",
+                "lean-2",
+            ]
+        );
+    }
+
+    #[test]
+    fn optional_proof_warmup_runs_exactly_once_only_when_enabled() {
+        let mut invocations = 0;
+        let disabled = run_optional_warmup(false, || {
+            invocations += 1;
+            Ok(1)
+        })
+        .unwrap();
+        assert!(disabled.is_none());
+        assert_eq!(invocations, 0);
+
+        let enabled = run_optional_warmup(true, || {
+            invocations += 1;
+            Ok(2)
+        })
+        .unwrap();
+        assert_eq!(enabled, Some(2));
+        assert_eq!(invocations, 1);
     }
 }

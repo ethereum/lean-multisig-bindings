@@ -14,6 +14,7 @@ use anyhow::{anyhow, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
+pub const LIGHTHOUSE_REVISION: &str = "e423a66763bb1bd780492d635123f208d80c3538";
 
 /// Returns deterministic, nonzero 32-byte key material for a fixture signer.
 pub fn deterministic_key_material(index: usize) -> Result<[u8; 32]> {
@@ -130,6 +131,7 @@ pub struct SupplementalReport {
 pub struct BenchmarkReport {
     pub lighthouse_revision: String,
     pub samples: usize,
+    pub proof_warmup: bool,
     pub comparisons: Vec<ComparisonReport>,
     pub supplemental: Vec<SupplementalReport>,
 }
@@ -187,6 +189,7 @@ pub struct RunConfig {
     pub samples: usize,
     pub sizes: Vec<usize>,
     pub json_path: Option<PathBuf>,
+    pub warmup_proofs: bool,
 }
 
 impl RunConfig {
@@ -201,6 +204,7 @@ impl RunConfig {
         let mut samples = None;
         let mut sizes = None;
         let mut json_path = None;
+        let mut warmup_proofs = false;
 
         while let Some(argument) = arguments.next() {
             match argument.as_os_str() {
@@ -230,9 +234,13 @@ impl RunConfig {
                     ensure!(!value.is_empty(), "--json path must not be empty");
                     json_path = Some(PathBuf::from(value));
                 }
+                argument if argument == OsStr::new("--warmup-proofs") => {
+                    ensure!(!warmup_proofs, "--warmup-proofs may only be supplied once");
+                    warmup_proofs = true;
+                }
                 _ => {
                     return Err(anyhow!(
-                        "unknown argument `{}`; expected --samples, --sizes, or --json",
+                        "unknown argument `{}`; expected --samples, --sizes, --json, or --warmup-proofs",
                         argument.to_string_lossy()
                     ));
                 }
@@ -243,6 +251,7 @@ impl RunConfig {
             samples: samples.unwrap_or(3),
             sizes: sizes.unwrap_or_else(|| vec![1, 8, 16]),
             json_path,
+            warmup_proofs,
         })
     }
 }
