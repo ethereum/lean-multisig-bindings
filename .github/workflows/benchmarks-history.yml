@@ -35,7 +35,7 @@ on:
       same_sizes:
         description: Comma-separated same-claim signer counts (maximum 512)
         required: true
-        default: '1,8,16'
+        default: '1,8,16,256,512'
         type: string
       distinct_sizes:
         description: Comma-separated distinct-claim counts (maximum 16)
@@ -154,7 +154,7 @@ jobs:
     timeout-minutes: 180
     env:
       BENCH_SAMPLES: ${{ github.event_name == 'workflow_dispatch' && inputs.samples || '3' }}
-      BENCH_SAME_SIZES: ${{ github.event_name == 'workflow_dispatch' && inputs.same_sizes || '1,8,16' }}
+      BENCH_SAME_SIZES: ${{ github.event_name == 'workflow_dispatch' && inputs.same_sizes || '1,8,16,256,512' }}
       BENCH_DISTINCT_SIZES: ${{ github.event_name == 'workflow_dispatch' && inputs.distinct_sizes || '1,8,16' }}
     steps:
       - name: Check out the trusted revision

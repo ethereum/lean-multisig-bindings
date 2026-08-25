@@ -156,7 +156,7 @@ jobs:
             echo "lighthouse_revision=$lighthouse_revision"
             echo "suite=slow"
             echo "samples=3"
-            echo "same_sizes=1,8,16"
+            echo "same_sizes=1,8,16,256,512"
             echo "distinct_sizes=1,8,16"
             echo "proof_warmup=enabled"
             echo
@@ -173,7 +173,7 @@ jobs:
           /usr/bin/time -v -o benchmark-artifacts/slow/resource-usage.txt \
             target/release/slow_comparison \
             --samples 3 \
-            --same-sizes 1,8,16 \
+            --same-sizes 1,8,16,256,512 \
             --distinct-sizes 1,8,16 \
             --warmup-proofs \
             --json benchmark-artifacts/slow/full.json 2>&1 \

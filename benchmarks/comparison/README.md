@@ -63,7 +63,7 @@ The local equivalent of the slow PR job is:
 cargo build --release -p lean-multisig-comparison --bin slow_comparison
 /usr/bin/time -v -o resource-usage.txt target/release/slow_comparison \
   --samples 3 \
-  --same-sizes 1,8,16 \
+  --same-sizes 1,8,16,256,512 \
   --distinct-sizes 1,8,16 \
   --warmup-proofs \
   --json full.json
@@ -95,11 +95,12 @@ mode, sample count, and whether proof warm-up was enabled.
 ## Pull request benchmark CI
 
 Relevant pull requests run the fast suite and three warmed-up slow-suite samples
-at sizes `1,8,16` in parallel. Both place their current measurements in the job
-summary, and the normalized slow artifact includes overall peak RSS. Both jobs
-retain their raw output, normalized data, and environment metadata as workflow
-artifacts for 14 days. Fast artifacts also contain Criterion estimates; slow
-artifacts contain the full numeric report and GNU time resource report.
+in parallel. Same-claim proofs use sizes `1,8,16,256,512`; distinct-claim proofs
+use `1,8,16`. Both place their current measurements in the job summary, and the
+normalized slow artifact includes overall peak RSS. Both jobs retain their raw
+output, normalized data, and environment metadata as workflow artifacts for 14
+days. Fast artifacts also contain Criterion estimates; slow artifacts contain
+the full numeric report and GNU time resource report.
 
 These shared-runner measurements are informational. They do not use an
 automated performance threshold and do not gate merging. The pull request
@@ -117,8 +118,9 @@ sample count, size axes, and proof-warmup mode.
 The trusted benchmark workflow has three modes:
 
 - Relevant pushes to `main` run both suites in parallel. The slow suite uses
-  three samples, sizes `1,8,16`, and proof warm-up. Fast artifacts are retained
-  for 30 days and slow artifacts for 90 days.
+  three samples and proof warm-up, with same-claim sizes `1,8,16,256,512` and
+  distinct-claim sizes `1,8,16`. Fast artifacts are retained for 30 days and
+  slow artifacts for 90 days.
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
   count (minimum 3) and independent same/distinct size lists. Manual slow runs
   always use proof warm-up. One-sample smoke runs remain local-only and cannot
@@ -135,8 +137,9 @@ gh workflow run benchmarks-history.yml \
   -f distinct_sizes=1,8,16
 ```
 
-That run can take substantial time and memory. Sizes above 16 are never part of
-a push or pull-request default.
+That full sweep can take substantial time and memory. Same-claim sizes
+`32,64,128` remain manual additions; distinct-claim sizes above 16 are not
+supported.
 
 Each successful measurement produces a validated `dashboard.json`. A separate
 publication job downloads only successful artifacts, checks out `gh-pages`, and
@@ -146,11 +149,12 @@ branch-root `index.html`; it does not execute measured repository code.
 
 The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It shows
 only the newest result for each suite: LeanVM and Lighthouse timings, throughput,
-and ratios grouped by operation family; LeanVM proof and BLS signature sizes;
-overall slow-suite peak RSS; and the measurement environment. A short glossary
-defines the aggregation and verification workloads. There are no
-commit-over-commit plots. The first publication removes the old nested
-`dev/bench` pages.
+and ratios grouped by operation family; serialized secret-key, public-key, and
+raw-signature sizes; LeanVM proof and aggregate BLS signature sizes; overall
+slow-suite peak RSS; and the measurement environment. The LeanVM secret-key row
+uses the same 16 signing slots as the key-creation benchmark. A short glossary
+defines the aggregation and verification workloads. There are no commit-over-
+commit plots. The first publication removes the old nested `dev/bench` pages.
 
 ### One-time Pages setup
 
