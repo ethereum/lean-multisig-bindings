@@ -1,0 +1,301 @@
+name: Benchmark history
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .cargo/**
+      - .github/workflows/benchmarks-history.yml
+      - benchmarks/comparison/**
+      - bindings/rust/**
+      - leanVM/**
+      - scripts/check-benchmark-ci.sh
+      - Cargo.lock
+      - Cargo.toml
+      - rust-toolchain.toml
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Benchmark suite to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - fast
+          - slow
+          - all
+      samples:
+        description: Slow-suite sample count
+        required: true
+        default: '3'
+        type: string
+      same_sizes:
+        description: Comma-separated same-claim signer counts (maximum 512)
+        required: true
+        default: '1,8,16'
+        type: string
+      distinct_sizes:
+        description: Comma-separated distinct-claim counts (maximum 16)
+        required: true
+        default: '1,8,16'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-history
+  cancel-in-progress: false
+
+jobs:
+  fast:
+    name: Measure fast comparison benchmarks
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fast' || inputs.suite == 'all'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the trusted revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install Rust 1.94.0
+        uses: dtolnay/rust-toolchain@35d8a35b823d6c20db516f5c35eb0a9640942c17
+        with:
+          toolchain: 1.94.0
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@401aff9a7a08acb9d27b64936a90db81024cff97
+
+      - name: Record benchmark environment
+        shell: bash
+        run: |
+          mkdir -p benchmark-artifacts/fast
+          lighthouse_revision=$(
+            sed -n 's/^lighthouse-bls = .*rev = "\([0-9a-f][0-9a-f]*\)".*$/\1/p' \
+              benchmarks/comparison/Cargo.toml
+          )
+          if ! printf '%s\n' "$lighthouse_revision" | grep -Eq '^[0-9a-f]{40}$' \
+            || [[ $(printf '%s\n' "$lighthouse_revision" | wc -l) -ne 1 ]]; then
+            echo 'Cargo.toml must contain exactly one 40-hex Lighthouse revision' >&2
+            exit 1
+          fi
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "runner_image_os=${ImageOS:-unknown}"
+            echo "runner_image_version=${ImageVersion:-unknown}"
+            echo "kernel=$(uname -srvmo)"
+            echo "lighthouse_revision=$lighthouse_revision"
+            echo "suite=fast"
+            echo "samples=criterion-default"
+            echo "same_sizes=1,8,16,32,64,128,256,512"
+            echo "distinct_sizes=1,8,16"
+            echo "proof_warmup=not-applicable"
+            echo
+            rustc -Vv
+            cargo -V
+            lscpu
+          } > benchmark-artifacts/fast/environment.txt
+
+      - name: Run fast Criterion benchmarks
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo bench -p lean-multisig-comparison --bench comparison -- \
+            --noplot --output-format bencher 2>&1 \
+            | tee benchmark-artifacts/fast/criterion-output.txt
+
+      - name: Collect Criterion estimates
+        run: cp -R target/criterion benchmark-artifacts/fast/criterion
+
+      - name: Upload fast history measurement
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: benchmark-history-fast-${{ github.run_id }}
+          path: benchmark-artifacts/fast/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Add current fast results to the job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Current fast benchmark results'
+            echo
+            echo '```text'
+            if [[ -f benchmark-artifacts/fast/criterion-output.txt ]]; then
+              cat benchmark-artifacts/fast/criterion-output.txt
+            else
+              echo 'Benchmark output was not produced.'
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  slow:
+    name: Measure slow proof benchmarks
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'slow' || inputs.suite == 'all'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BENCH_SAMPLES: ${{ github.event_name == 'workflow_dispatch' && inputs.samples || '3' }}
+      BENCH_SAME_SIZES: ${{ github.event_name == 'workflow_dispatch' && inputs.same_sizes || '1,8,16' }}
+      BENCH_DISTINCT_SIZES: ${{ github.event_name == 'workflow_dispatch' && inputs.distinct_sizes || '1,8,16' }}
+    steps:
+      - name: Check out the trusted revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install Rust 1.94.0
+        uses: dtolnay/rust-toolchain@35d8a35b823d6c20db516f5c35eb0a9640942c17
+        with:
+          toolchain: 1.94.0
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@401aff9a7a08acb9d27b64936a90db81024cff97
+
+      - name: Validate manual benchmark inputs
+        shell: bash
+        run: |
+          [[ "$BENCH_SAMPLES" =~ ^[0-9]+$ ]] && (( 10#$BENCH_SAMPLES >= 3 )) || {
+            echo 'samples must be an integer greater than or equal to 3' >&2
+            exit 1
+          }
+          [[ "$BENCH_SAME_SIZES" =~ ^[0-9]+(,[0-9]+)*$ ]] || {
+            echo 'same_sizes must be a comma-separated integer list' >&2
+            exit 1
+          }
+          [[ "$BENCH_DISTINCT_SIZES" =~ ^[0-9]+(,[0-9]+)*$ ]] || {
+            echo 'distinct_sizes must be a comma-separated integer list' >&2
+            exit 1
+          }
+
+      - name: Record benchmark environment
+        shell: bash
+        run: |
+          mkdir -p benchmark-artifacts/slow
+          lighthouse_revision=$(
+            sed -n 's/^lighthouse-bls = .*rev = "\([0-9a-f][0-9a-f]*\)".*$/\1/p' \
+              benchmarks/comparison/Cargo.toml
+          )
+          if ! printf '%s\n' "$lighthouse_revision" | grep -Eq '^[0-9a-f]{40}$' \
+            || [[ $(printf '%s\n' "$lighthouse_revision" | wc -l) -ne 1 ]]; then
+            echo 'Cargo.toml must contain exactly one 40-hex Lighthouse revision' >&2
+            exit 1
+          fi
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "runner_image_os=${ImageOS:-unknown}"
+            echo "runner_image_version=${ImageVersion:-unknown}"
+            echo "kernel=$(uname -srvmo)"
+            echo "lighthouse_revision=$lighthouse_revision"
+            echo "suite=slow"
+            echo "samples=$BENCH_SAMPLES"
+            echo "same_sizes=$BENCH_SAME_SIZES"
+            echo "distinct_sizes=$BENCH_DISTINCT_SIZES"
+            echo "proof_warmup=enabled"
+            echo
+            rustc -Vv
+            cargo -V
+            lscpu
+          } > benchmark-artifacts/slow/environment.txt
+
+      - name: Run steady-state slow proof benchmarks
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
+            --samples "$BENCH_SAMPLES" \
+            --same-sizes "$BENCH_SAME_SIZES" \
+            --distinct-sizes "$BENCH_DISTINCT_SIZES" \
+            --warmup-proofs \
+            --json benchmark-artifacts/slow/full.json \
+            --action-json benchmark-artifacts/slow/action.json 2>&1 \
+            | tee benchmark-artifacts/slow/slow-output.txt
+
+      - name: Upload slow history measurement
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: benchmark-history-slow-${{ github.run_id }}
+          path: benchmark-artifacts/slow/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Add current slow results to the job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Current slow benchmark results'
+            echo
+            if [[ -f benchmark-artifacts/slow/slow-output.txt ]]; then
+              sed -n '/^Workload | Size |/,$p' benchmark-artifacts/slow/slow-output.txt
+            else
+              echo 'Benchmark output was not produced.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish successful benchmark history
+    if: always() && vars.BENCHMARK_HISTORY_ENABLED == 'true' && (needs.fast.result == 'success' || needs.slow.result == 'success')
+    needs: [fast, slow]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      deployments: write
+    steps:
+      - name: Initialize trusted Git state
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Download fast measurement
+        if: needs.fast.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: benchmark-history-fast-${{ github.run_id }}
+          path: publish/fast
+
+      - name: Publish fast benchmark history
+        if: needs.fast.result == 'success'
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
+        with:
+          name: Lighthouse comparison (fast)
+          tool: cargo
+          output-file-path: publish/fast/criterion-output.txt
+          benchmark-data-dir-path: dev/bench/fast
+          gh-pages-branch: gh-pages
+          github-token: ${{ github.token }}
+          auto-push: true
+          max-items-in-chart: 100
+          summary-always: true
+          fail-on-alert: false
+
+      - name: Download slow measurement
+        if: needs.slow.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: benchmark-history-slow-${{ github.run_id }}
+          path: publish/slow
+
+      - name: Publish slow benchmark history
+        if: needs.slow.result == 'success'
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
+        with:
+          name: Lighthouse comparison (slow)
+          tool: customSmallerIsBetter
+          output-file-path: publish/slow/action.json
+          benchmark-data-dir-path: dev/bench/slow
+          gh-pages-branch: gh-pages
+          github-token: ${{ github.token }}
+          auto-push: true
+          max-items-in-chart: 100
+          summary-always: true
+          fail-on-alert: false

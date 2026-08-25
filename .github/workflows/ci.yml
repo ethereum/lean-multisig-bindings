@@ -18,6 +18,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Check benchmark workflow policy
+        run: sh scripts/check-benchmark-ci.sh
+
       - name: Check formatting
         run: cargo fmt --check
 
