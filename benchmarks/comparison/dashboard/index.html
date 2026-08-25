@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Lean multisig vs Lighthouse BLS</title>
+  <title>LeanVM multisig vs Lighthouse BLS</title>
   <style>
     :root {
       --background: #f5f7fb;
@@ -224,8 +224,8 @@
 <body>
   <main>
     <header>
-      <h1>Lean multisig vs Lighthouse BLS</h1>
-      <p class="subtitle">Current performance of the Lean-backed multisignature implementation beside the BLS implementation used by Lighthouse. Each successful run replaces its suite’s previous result.</p>
+      <h1>LeanVM multisig vs Lighthouse BLS</h1>
+      <p class="subtitle">Current performance of the LeanVM-backed multisignature implementation beside the BLS implementation used by Lighthouse. Each successful run replaces its suite’s previous result.</p>
     </header>
 
     <section aria-labelledby="fast-title">
@@ -243,7 +243,7 @@
       <div class="section-heading">
         <div>
           <h2 id="slow-title">Proof-backed operations</h2>
-          <p>Full Lean proof generation and verification beside Lighthouse BLS.</p>
+          <p>Full LeanVM proof generation and verification beside Lighthouse BLS.</p>
         </div>
         <span class="stamp" id="slow-stamp">Loading…</span>
       </div>
@@ -256,11 +256,11 @@
       <dl class="definitions">
         <div>
           <dt>Same-claim aggregation</dt>
-          <dd>Many independent signers sign the same message. Lean checks those signatures in the zkVM and produces a proof; Lighthouse combines the BLS signatures into one signature.</dd>
+          <dd>Many independent signers sign the same message. LeanVM checks those signatures in the zkVM and produces a proof; Lighthouse combines the BLS signatures into one signature.</dd>
         </div>
         <div>
           <dt>Same-claim verification</dt>
-          <dd>Checks the Lean proof or aggregate BLS signature against that one message and the complete set of signers.</dd>
+          <dd>Checks the LeanVM proof or aggregate BLS signature against that one message and the complete set of signers.</dd>
         </div>
         <div>
           <dt>Distinct-claim aggregation</dt>
@@ -272,7 +272,7 @@
         </div>
         <div>
           <dt>Proof size and signature size</dt>
-          <dd>The Lean proof size is the serialized zkVM proof produced by aggregation. The Lighthouse value is the serialized aggregate BLS signature.</dd>
+          <dd>The LeanVM proof size is the serialized zkVM proof produced by aggregation. The Lighthouse value is the serialized aggregate BLS signature.</dd>
         </div>
         <div>
           <dt>Suite peak RSS</dt>
@@ -418,9 +418,7 @@
       }
       const target = document.getElementById("fast-results");
       target.replaceChildren();
-      addFacts(target, environmentFacts(data, [
-        ["Samples", data.environment?.samples || dash],
-      ]));
+      addFacts(target, environmentFacts(data));
 
       const groups = new Map();
       for (const result of data.benchmarks) {
@@ -441,7 +439,7 @@
           ],
         };
       });
-      addGroupedTables(target, ["Operation", "Lean median", "Lighthouse median", "Lean / BLS"], rows);
+      addGroupedTables(target, ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS"], rows);
       document.getElementById("fast-stamp").textContent = new Date(data.measured_at).toLocaleString();
     }
 
@@ -484,7 +482,7 @@
           ],
         });
       }
-      addGroupedTables(target, ["Operation", "Lean median", "Lighthouse median", "Lean / BLS", "Lean ops/s", "BLS ops/s", "Lean proof size", "BLS signature size"], rows);
+      addGroupedTables(target, ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM ops/s", "BLS ops/s", "LeanVM proof size", "BLS signature size"], rows);
       document.getElementById("slow-stamp").textContent = new Date(data.measured_at).toLocaleString();
     }
 

@@ -147,8 +147,8 @@ last slow result and vice versa. It also installs the static dashboard as the
 branch-root `index.html`; it does not execute measured repository code.
 
 The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It shows
-only the newest result for each suite: Lean and Lighthouse timings, throughput,
-and ratios grouped by operation family; Lean proof and BLS signature sizes;
+only the newest result for each suite: LeanVM and Lighthouse timings, throughput,
+and ratios grouped by operation family; LeanVM proof and BLS signature sizes;
 overall slow-suite peak RSS; and the measurement environment. A short glossary
 defines the aggregation and verification workloads. There are no
 commit-over-commit plots. The first publication removes the old nested
