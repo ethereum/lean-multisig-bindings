@@ -410,11 +410,29 @@ impl RunConfig {
 }
 
 fn output_paths_collide(left: &Path, right: &Path) -> Result<bool> {
-    let left = std::path::absolute(left)
-        .with_context(|| format!("failed to resolve output path {}", left.display()))?;
-    let right = std::path::absolute(right)
-        .with_context(|| format!("failed to resolve output path {}", right.display()))?;
+    let left = lexically_normalize_absolute(left)?;
+    let right = lexically_normalize_absolute(right)?;
     Ok(left == right)
+}
+
+fn lexically_normalize_absolute(path: &Path) -> Result<PathBuf> {
+    let absolute = std::path::absolute(path)
+        .with_context(|| format!("failed to resolve output path {}", path.display()))?;
+    let mut normalized = PathBuf::new();
+
+    for component in absolute.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                // Popping a root or platform prefix returns false and leaves it intact,
+                // matching filesystem resolution of an absolute path above its root.
+                normalized.pop();
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+
+    Ok(normalized)
 }
 
 fn option_value(option: &str, value: Option<OsString>) -> Result<OsString> {

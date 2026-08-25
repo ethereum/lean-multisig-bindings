@@ -192,6 +192,23 @@ fn config_rejects_colliding_full_and_action_json_paths() {
 }
 
 #[test]
+fn config_rejects_lexically_equivalent_output_paths() {
+    for (full, action) in [
+        ("/dev/null", "/dev/../dev/null"),
+        ("target/report.json", "target/../target/report.json"),
+    ] {
+        let error =
+            RunConfig::parse_from(["slow-comparison", "--json", full, "--action-json", action])
+                .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "--json and --action-json must write to different paths"
+        );
+    }
+}
+
+#[test]
 fn config_accepts_independent_same_and_distinct_sizes() {
     let config = RunConfig::parse_from([
         "slow-comparison",
