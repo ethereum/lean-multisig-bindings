@@ -16,8 +16,6 @@ on:
       - Cargo.lock
       - Cargo.toml
       - rust-toolchain.toml
-  schedule:
-    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       suite:
@@ -151,7 +149,7 @@ jobs:
 
   slow:
     name: Measure slow proof benchmarks
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'slow' || inputs.suite == 'all'))
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'slow' || inputs.suite == 'all'))
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
