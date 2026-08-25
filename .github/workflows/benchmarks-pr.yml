@@ -64,8 +64,6 @@ jobs:
             echo "lighthouse_revision=$lighthouse_revision"
             echo "suite=fast"
             echo "samples=criterion-default"
-            echo "same_sizes=1,8,16,32,64,128,256,512"
-            echo "distinct_sizes=1,8,16"
             echo "proof_warmup=not-applicable"
             echo
             rustc -Vv
@@ -77,8 +75,9 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          rm -rf -- target/criterion
           cargo bench -p lean-multisig-comparison --bench comparison -- \
-            --noplot --output-format bencher 2>&1 \
+            --noplot 2>&1 \
             | tee benchmark-artifacts/fast/criterion-output.txt
 
       - name: Build current fast dashboard data
@@ -87,6 +86,7 @@ jobs:
             >> benchmark-artifacts/fast/environment.txt
           python3 scripts/build_benchmark_dashboard.py fast \
             --input benchmark-artifacts/fast/criterion-output.txt \
+            --criterion-dir target/criterion \
             --environment benchmark-artifacts/fast/environment.txt \
             --output benchmark-artifacts/fast/dashboard.json
 

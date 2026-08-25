@@ -9,7 +9,7 @@ These are performance comparisons, not claims of equivalent security
 semantics. leanMultisig aggregation generates zkVM proofs, whereas BLS
 aggregation combines elliptic-curve points.
 
-## Fast Lighthouse and single-operation benchmarks
+## Fast paired-operation benchmarks
 
 Run the Criterion suite in release mode:
 
@@ -17,10 +17,12 @@ Run the Criterion suite in release mode:
 cargo bench -p lean-multisig-comparison --bench comparison
 ```
 
-The Lighthouse same-claim aggregate and verification groups cover
-`1,8,16,32,64,128,256,512` signers. Distinct-claim aggregation,
-distinct-claim verification, and signature-set verification remain capped at
-`1,8,16` claims.
+The fast suite compares paired key creation, signing, raw-signature
+serialization and deserialization, single-signature verification, and
+verification of `1,8,16` independent signer-and-message tuples. For the last
+workload, LeanVM verifies every raw XMSS signature and Lighthouse uses its
+production batch-verification API. Aggregate proof generation and verification
+are measured by the slow paired comparison below.
 
 ## Slow paired comparison
 
@@ -76,9 +78,10 @@ RSS in KiB; normalization rejects missing, duplicate, malformed, zero, or
 unrepresentable measurements.
 
 `distinct_claim_verify_conceptual` uses Lighthouse `aggregate_verify`, which
-Lighthouse documents as an EF-test-only, non-production path. Use the
-Lighthouse-only `lighthouse_signature_sets_verify` supplemental row for its
-production-oriented batch-verification measurement.
+Lighthouse documents as an EF-test-only, non-production path. The fast
+`independent_signatures_verify` workload provides the production-oriented
+comparison: LeanVM verifies the same independent signer-and-message tuples
+that Lighthouse verifies with its batch API.
 
 The 512-signer fixture-shape regression validates every raw XMSS signature and
 takes minutes, so ordinary `cargo test` skips it. Run it explicitly when
@@ -99,8 +102,8 @@ in parallel. Same-claim proofs use sizes `1,8,16,256,512`; distinct-claim proofs
 use `1,8,16`. Both place their current measurements in the job summary, and the
 normalized slow artifact includes overall peak RSS. Both jobs retain their raw
 output, normalized data, and environment metadata as workflow artifacts for 14
-days. Fast artifacts also contain Criterion estimates; slow artifacts contain
-the full numeric report and GNU time resource report.
+days. Fast dashboard data is normalized from Criterion's structured estimates;
+slow artifacts contain the full numeric report and GNU time resource report.
 
 These shared-runner measurements are informational. They do not use an
 automated performance threshold and do not gate merging. The pull request
@@ -111,7 +114,7 @@ Benchmark execution, proof/signature validation, report conversion, and
 artifact failures still fail their jobs. Each environment sidecar records the
 commit, runner OS and architecture, runner image name and version, CPU, kernel,
 Rust and Cargo versions, the manifest-derived Lighthouse revision, suite,
-sample count, size axes, and proof-warmup mode.
+sample count, applicable size axes, and proof-warmup mode.
 
 ## Current-results dashboard
 
@@ -148,13 +151,13 @@ last slow result and vice versa. It also installs the static dashboard as the
 branch-root `index.html`; it does not execute measured repository code.
 
 The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It shows
-only the newest result for each suite: LeanVM and Lighthouse timings, throughput,
-and ratios grouped by operation family; serialized secret-key, public-key, and
-raw-signature sizes; LeanVM proof and aggregate BLS signature sizes; overall
-slow-suite peak RSS; and the measurement environment. The LeanVM secret-key row
-uses the same 16 signing slots as the key-creation benchmark. A short glossary
-defines the aggregation and verification workloads. There are no commit-over-
-commit plots. The first publication removes the old nested `dev/bench` pages.
+only the newest result for each suite: LeanVM and Lighthouse timings and ratios
+grouped by operation family; serialized secret-key, public-key, and raw-signature
+sizes; LeanVM proof and aggregate BLS signature sizes; overall slow-suite peak
+RSS; and the measurement environment. The LeanVM secret-key row uses the same 16
+signing slots as the key-creation benchmark. A short glossary defines the
+aggregation and verification workloads. There are no commit-over-commit plots.
+The first publication removes the old nested `dev/bench` pages.
 
 ### One-time Pages setup
 

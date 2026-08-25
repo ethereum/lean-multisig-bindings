@@ -10,10 +10,6 @@ import re
 from pathlib import Path
 
 
-BENCHMARK_RE = re.compile(
-    r"^test (?P<name>\S+) \.\.\. bench:\s+"
-    r"(?P<median>[\d,]+) ns/iter \(\+/- (?P<deviation>[\d,]+)\)$"
-)
 ARTIFACT_SIZE_RE = re.compile(
     r"^artifact-size "
     r"(?P<artifact>secret_key_16_slots|public_key|raw_signature)/"
@@ -51,6 +47,18 @@ def parse_environment(path: Path) -> dict[str, str]:
 
 
 def parse_benchmark_name(name: str) -> tuple[str, str, int | None]:
+    parts = name.split("/")
+    if (
+        len(parts) == 3
+        and parts[0]
+        and parts[1] in {"lean", "lighthouse"}
+        and parts[2].isdigit()
+    ):
+        input_size = int(parts[2])
+        if input_size <= 0:
+            raise ValueError(f"benchmark input size must be positive: {name}")
+        return parts[0], parts[1], input_size
+
     workload, separator, suffix = name.rpartition("/")
     if not separator:
         raise ValueError(f"unrecognized benchmark name: {name}")
@@ -72,7 +80,12 @@ def parse_benchmark_name(name: str) -> tuple[str, str, int | None]:
     raise ValueError(f"unrecognized benchmark name: {name}")
 
 
-def build_fast(input_path: Path, environment_path: Path, output_path: Path) -> None:
+def build_fast(
+    input_path: Path,
+    criterion_dir: Path,
+    environment_path: Path,
+    output_path: Path,
+) -> None:
     environment = parse_environment(environment_path)
     if environment["suite"] != "fast":
         raise ValueError("environment suite must be fast")
@@ -101,17 +114,28 @@ def build_fast(input_path: Path, environment_path: Path, output_path: Path) -> N
 
     benchmarks = []
     seen = set()
-    for line in lines:
-        match = BENCHMARK_RE.fullmatch(line.strip())
-        if not match:
-            continue
-        name = match.group("name")
+    for benchmark_path in sorted(criterion_dir.glob("**/new/benchmark.json")):
+        benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
+        estimates_path = benchmark_path.with_name("estimates.json")
+        estimates = json.loads(estimates_path.read_text(encoding="utf-8"))
+        name = benchmark.get("full_id")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"invalid Criterion benchmark id: {benchmark_path}")
         if name in seen:
             raise ValueError(f"duplicate benchmark: {name}")
         seen.add(name)
         workload, implementation, input_size = parse_benchmark_name(name)
-        median_ns = int(match.group("median").replace(",", ""))
-        deviation_ns = int(match.group("deviation").replace(",", ""))
+        try:
+            median = estimates["median"]["point_estimate"]
+            deviation = estimates["std_dev"]["point_estimate"]
+        except (KeyError, TypeError) as error:
+            raise ValueError(f"invalid Criterion estimates: {estimates_path}") from error
+        if not isinstance(median, (int, float)) or not math.isfinite(median):
+            raise ValueError(f"invalid Criterion median: {estimates_path}")
+        if not isinstance(deviation, (int, float)) or not math.isfinite(deviation):
+            raise ValueError(f"invalid Criterion deviation: {estimates_path}")
+        median_ns = round(median)
+        deviation_ns = round(deviation)
         if median_ns <= 0 or deviation_ns < 0:
             raise ValueError(f"invalid timing for benchmark: {name}")
         benchmarks.append(
@@ -126,7 +150,18 @@ def build_fast(input_path: Path, environment_path: Path, output_path: Path) -> N
         )
 
     if not benchmarks:
-        raise ValueError("benchmark output did not contain any Bencher rows")
+        raise ValueError("Criterion output did not contain any benchmark estimates")
+    implementations_by_workload: dict[tuple[str, int | None], set[str]] = {}
+    for result in benchmarks:
+        key = (result["workload"], result["input_size"])
+        implementations_by_workload.setdefault(key, set()).add(result["implementation"])
+    unpaired = [
+        key
+        for key, implementations in implementations_by_workload.items()
+        if implementations != {"lean", "lighthouse"}
+    ]
+    if unpaired:
+        raise ValueError(f"fast benchmarks are missing paired implementations: {unpaired}")
 
     document = {
         "schema_version": 1,
@@ -285,6 +320,7 @@ def make_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     fast = subparsers.add_parser("fast")
     fast.add_argument("--input", type=Path, required=True)
+    fast.add_argument("--criterion-dir", type=Path, required=True)
     fast.add_argument("--environment", type=Path, required=True)
     fast.add_argument("--output", type=Path, required=True)
     slow = subparsers.add_parser("slow")
@@ -298,7 +334,7 @@ def make_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = make_parser().parse_args(argv)
     if args.command == "fast":
-        build_fast(args.input, args.environment, args.output)
+        build_fast(args.input, args.criterion_dir, args.environment, args.output)
     elif args.command == "slow":
         build_slow(args.input, args.resource, args.environment, args.output)
     return 0

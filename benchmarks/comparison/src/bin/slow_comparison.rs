@@ -7,14 +7,13 @@ use std::{
 use anyhow::{bail, ensure, Context, Result};
 use lean_multisig_comparison::{
     ensure_distinct_output_paths, BenchmarkReport, ComparisonReport, FixtureSet, RunConfig,
-    SampleSummary, SupplementalReport, LIGHTHOUSE_REVISION,
+    SampleSummary, LIGHTHOUSE_REVISION,
 };
 
 const SEMANTIC_WARNING: &str = "WARNING: leanMultisig aggregation generates zkVM proofs, while Lighthouse BLS aggregation combines elliptic-curve points; these operations do not have identical security semantics.";
 const MIN_LIGHTHOUSE_BATCH_DURATION: Duration = Duration::from_millis(10);
 const DISTINCT_CLAIM_VERIFY_WORKLOAD: &str = "distinct_claim_verify_conceptual";
-const LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD: &str = "lighthouse_signature_sets_verify";
-const DISTINCT_VERIFY_NOTE: &str = "NOTE: distinct_claim_verify_conceptual uses Lighthouse aggregate_verify, an EF-test-only non-production path; use the Lighthouse-only lighthouse_signature_sets_verify row for production-oriented BLS batch verification.";
+const DISTINCT_VERIFY_NOTE: &str = "NOTE: distinct_claim_verify_conceptual uses Lighthouse aggregate_verify, an EF-test-only non-production path. The fast independent_signatures_verify workload compares production-oriented BLS batch verification with LeanVM verification of the same independent signer-and-message tuples.";
 
 fn main() -> Result<()> {
     let config =
@@ -27,7 +26,6 @@ fn run(config: RunConfig) -> Result<()> {
 
     let mut comparisons =
         Vec::with_capacity((config.same_sizes.len() + config.distinct_sizes.len()) * 2);
-    let mut supplemental = Vec::with_capacity(config.distinct_sizes.len());
 
     for &size in &config.same_sizes {
         let same_claim = FixtureSet::same_claim(size).with_context(|| {
@@ -94,11 +92,6 @@ fn run(config: RunConfig) -> Result<()> {
             config.samples,
             size,
         )?);
-        supplemental.push(measure_signature_sets_verify(
-            &distinct_claims,
-            config.samples,
-            size,
-        )?);
     }
 
     let report = BenchmarkReport {
@@ -106,7 +99,7 @@ fn run(config: RunConfig) -> Result<()> {
         samples: config.samples,
         proof_warmup: config.warmup_proofs,
         comparisons,
-        supplemental,
+        supplemental: Vec::new(),
     };
 
     println!("{SEMANTIC_WARNING}");
@@ -516,55 +509,6 @@ fn measure_distinct_claim_verify(
     .with_context(|| format!("failed to assemble {WORKLOAD} report for input size {size}"))
 }
 
-fn measure_signature_sets_verify(
-    fixtures: &FixtureSet,
-    samples: usize,
-    size: usize,
-) -> Result<SupplementalReport> {
-    const WORKLOAD: &str = LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD;
-    let signature_sets = fixtures.bls_signature_sets();
-    let lighthouse_iterations =
-        calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
-            let (elapsed, all_valid) = time_bool_batch(iterations, || {
-                lighthouse_bls::verify_signature_sets(black_box(signature_sets.iter()))
-            })?;
-            ensure!(
-                all_valid,
-                "{WORKLOAD} (input size {size}): Lighthouse calibration verification failed"
-            );
-            Ok(elapsed)
-        })
-        .with_context(|| {
-            format!("{WORKLOAD} (input size {size}): Lighthouse calibration failed")
-        })?;
-
-    let mut durations = Vec::with_capacity(samples);
-    for sample in 0..samples {
-        record_batched_sample(
-            &mut durations,
-            lighthouse_iterations,
-            |iterations| {
-                time_bool_batch(iterations, || {
-                    lighthouse_bls::verify_signature_sets(black_box(signature_sets.iter()))
-                })
-            },
-            |all_valid| {
-                ensure!(
-                    *all_valid,
-                    "{WORKLOAD} (input size {size}, sample {sample}): Lighthouse verification batch contained an invalid result"
-                );
-                Ok(())
-            },
-        )?;
-    }
-
-    Ok(SupplementalReport {
-        workload: WORKLOAD.to_owned(),
-        input_size: size,
-        lighthouse: summarize(durations, WORKLOAD, size, "Lighthouse")?,
-    })
-}
-
 fn aggregate_bls(signatures: &[lighthouse_bls::Signature]) -> lighthouse_bls::AggregateSignature {
     let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
     for signature in signatures {
@@ -953,13 +897,9 @@ mod tests {
             DISTINCT_CLAIM_VERIFY_WORKLOAD,
             "distinct_claim_verify_conceptual"
         );
-        assert_eq!(
-            LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD,
-            "lighthouse_signature_sets_verify"
-        );
         assert!(DISTINCT_VERIFY_NOTE.contains("EF-test"));
         assert!(DISTINCT_VERIFY_NOTE.contains("non-production"));
-        assert!(DISTINCT_VERIFY_NOTE.contains(LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD));
+        assert!(DISTINCT_VERIFY_NOTE.contains("independent_signatures_verify"));
     }
 
     #[cfg(unix)]
@@ -979,17 +919,22 @@ mod tests {
             action.to_str().unwrap(),
         ])
         .unwrap();
+        let lean = SampleSummary::from_durations([Duration::from_millis(2)]).unwrap();
         let lighthouse = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
         let report = BenchmarkReport {
             lighthouse_revision: LIGHTHOUSE_REVISION.to_owned(),
             samples: 1,
             proof_warmup: false,
-            comparisons: vec![],
-            supplemental: vec![SupplementalReport {
-                workload: LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD.to_owned(),
-                input_size: 1,
+            comparisons: vec![ComparisonReport::new(
+                "same_claim_verify",
+                1,
+                lean,
                 lighthouse,
-            }],
+                1,
+                1,
+            )
+            .unwrap()],
+            supplemental: vec![],
         };
 
         let error = write_report_files(&report, &config).unwrap_err();
