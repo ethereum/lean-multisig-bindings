@@ -57,7 +57,7 @@ Lean input clone performed immediately before aggregation are outside the timed
 region. Lighthouse operations are calibrated in batches of at least 10 ms and
 reported per operation.
 
-The local equivalent of the opt-in slow PR job is:
+The local equivalent of the slow PR job is:
 
 ```bash
 cargo build --release -p lean-multisig-comparison --bin slow_comparison
@@ -94,14 +94,12 @@ mode, sample count, and whether proof warm-up was enabled.
 
 ## Pull request benchmark CI
 
-Relevant pull requests run the fast suite and place its current Bencher-format
-measurements in the job summary. Applying the `benchmark-slow` label also runs
-three warmed-up samples at sizes `1,8,16` and places the comparison table in
-the job summary. The normalized slow artifact also includes overall peak RSS.
-Applying unrelated labels does not rerun either suite. Both jobs retain their
-raw output, normalized data, and environment metadata as workflow artifacts for
-14 days. Fast artifacts also contain Criterion estimates; slow artifacts contain
-the full numeric report and GNU time resource report.
+Relevant pull requests run the fast suite and three warmed-up slow-suite samples
+at sizes `1,8,16` in parallel. Both place their current measurements in the job
+summary, and the normalized slow artifact includes overall peak RSS. Both jobs
+retain their raw output, normalized data, and environment metadata as workflow
+artifacts for 14 days. Fast artifacts also contain Criterion estimates; slow
+artifacts contain the full numeric report and GNU time resource report.
 
 These shared-runner measurements are informational. They do not use an
 automated performance threshold and do not gate merging. The pull request
@@ -118,9 +116,9 @@ sample count, size axes, and proof-warmup mode.
 
 The trusted benchmark workflow has three modes:
 
-- Relevant pushes to `main` run and retain the fast suite for 30 days.
-- A nightly 03:17 UTC schedule runs the slow suite with three samples,
-  sizes `1,8,16`, and proof warm-up; its artifacts are retained for 90 days.
+- Relevant pushes to `main` run both suites in parallel. The slow suite uses
+  three samples, sizes `1,8,16`, and proof warm-up. Fast artifacts are retained
+  for 30 days and slow artifacts for 90 days.
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
   count (minimum 3) and independent same/distinct size lists. Manual slow runs
   always use proof warm-up. One-sample smoke runs remain local-only and cannot
@@ -137,8 +135,8 @@ gh workflow run benchmarks-history.yml \
   -f distinct_sizes=1,8,16
 ```
 
-That run can take substantial time and memory. It is never part of a push,
-pull-request, or scheduled default.
+That run can take substantial time and memory. Sizes above 16 are never part of
+a push or pull-request default.
 
 Each successful measurement produces a validated `dashboard.json`. A separate
 publication job downloads only successful artifacts, checks out `gh-pages`, and
@@ -147,8 +145,8 @@ last slow result and vice versa. It also installs the static dashboard as the
 branch-root `index.html`; it does not execute measured repository code.
 
 The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It shows
-only the newest result for each suite: Lean and Lighthouse timings, throughput,
-and ratios grouped by operation family; Lean proof and BLS signature sizes;
+only the newest result for each suite: LeanVM and Lighthouse timings, throughput,
+and ratios grouped by operation family; LeanVM proof and BLS signature sizes;
 overall slow-suite peak RSS; and the measurement environment. A short glossary
 defines the aggregation and verification workloads. There are no
 commit-over-commit plots. The first publication removes the old nested
@@ -173,5 +171,5 @@ git push origin gh-pages
 
 In repository settings, configure GitHub Pages to deploy from the `gh-pages`
 branch and its root directory. Ensure GitHub Actions may use the workflow's
-declared write permission. Trusted `main`, schedule, and manual runs may then
-update `gh-pages`; PR workflows retain `contents: read` and receive no secrets.
+declared write permission. Trusted `main` pushes and manual runs may then update
+`gh-pages`; PR workflows retain `contents: read` and receive no secrets.

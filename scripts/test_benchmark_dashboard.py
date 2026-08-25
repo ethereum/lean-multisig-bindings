@@ -24,7 +24,7 @@ class DashboardBuilderTests(unittest.TestCase):
     def test_static_dashboard_is_latest_only_and_loads_both_suites(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
         lowered = html.lower()
-        self.assertIn("lean multisig vs lighthouse bls", lowered)
+        self.assertIn("leanvm multisig vs lighthouse bls", lowered)
         self.assertIn('id="fast-results"', html)
         self.assertIn('id="slow-results"', html)
         self.assertIn('loadSuite("fast", renderFast)', html)
@@ -32,7 +32,7 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn('fetch(`data/${suite}.json`', html)
         self.assertIn("textContent", html)
         self.assertIn("overflow-x: auto", html)
-        self.assertIn("Lean ops/s", html)
+        self.assertIn("LeanVM ops/s", html)
         self.assertIn("BLS ops/s", html)
         self.assertNotIn("innerHTML", html)
         self.assertNotIn("<canvas", lowered)
@@ -57,6 +57,11 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn("proof size", lowered)
         self.assertIn("peak rss", lowered)
 
+    def test_dashboard_names_the_slow_section_by_what_it_measures(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("Aggregate proof generation and verification", html)
+        self.assertNotIn("Proof-backed operations", html)
+
     def test_dashboard_metadata_wraps_and_omits_secondary_details(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
         self.assertIn("overflow-wrap: anywhere", html)
@@ -66,6 +71,8 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertNotIn('["Runner"', html)
         self.assertNotIn('["Same-claim sizes"', html)
         self.assertNotIn('["Distinct-claim sizes"', html)
+        self.assertNotIn('["Samples", data.environment?.samples', html)
+        self.assertIn('["Samples", String(data.samples)]', html)
 
     def test_dashboard_splits_results_into_operation_family_tables(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
@@ -79,10 +86,26 @@ class DashboardBuilderTests(unittest.TestCase):
 
     def test_dashboard_labels_proof_and_signature_sizes_explicitly(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
-        self.assertIn("Lean proof size", html)
+        self.assertIn("LeanVM proof size", html)
         self.assertIn("BLS signature size", html)
         self.assertNotIn("Lean artifact", html)
         self.assertNotIn("BLS artifact", html)
+
+    def test_dashboard_uses_leanvm_in_user_facing_copy(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        for old_label in (
+            "Lean median",
+            "Lean / BLS",
+            "Lean ops/s",
+            "Lean proof size",
+            "Full Lean proof",
+            "Lean checks",
+        ):
+            self.assertNotIn(old_label, html)
+        self.assertIn("LeanVM median", html)
+        self.assertIn("LeanVM / BLS", html)
+        self.assertIn("LeanVM ops/s", html)
+        self.assertIn("LeanVM proof size", html)
 
     def test_fast_command_normalizes_real_bencher_rows(self):
         dashboard = load_dashboard_module()
