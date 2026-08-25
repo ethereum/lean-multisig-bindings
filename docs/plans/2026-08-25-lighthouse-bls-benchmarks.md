@@ -205,16 +205,18 @@ fn config_defaults_to_practical_sizes_and_three_samples() {
     let config = RunConfig::parse_from(["slow-comparison"]).unwrap();
     assert_eq!(config.samples, 3);
     assert_eq!(config.sizes, vec![1, 8, 16]);
+    assert!(!config.warmup_proofs);
 }
 
 #[test]
 fn config_accepts_samples_sizes_and_json_path() {
     let config = RunConfig::parse_from([
-        "slow-comparison", "--samples", "2", "--sizes", "1,8", "--json", "/tmp/report.json"
+        "slow-comparison", "--samples", "2", "--sizes", "1,8", "--json", "/tmp/report.json", "--warmup-proofs"
     ]).unwrap();
     assert_eq!(config.samples, 2);
     assert_eq!(config.sizes, vec![1, 8]);
     assert_eq!(config.json_path.unwrap().to_str(), Some("/tmp/report.json"));
+    assert!(config.warmup_proofs);
 }
 
 #[test]
@@ -271,12 +273,13 @@ pub struct SupplementalReport {
 pub struct BenchmarkReport {
     pub lighthouse_revision: String,
     pub samples: usize,
+    pub proof_warmup: bool,
     pub comparisons: Vec<ComparisonReport>,
     pub supplemental: Vec<SupplementalReport>,
 }
 ```
 
-Implement checked `Duration` to `u64` nanosecond conversion, sorted median calculation without changing recorded sample order, throughput, ratio calculation, JSON serialization, and `RunConfig::parse_from`. Parse only `--samples`, `--sizes`, and `--json`; reject unknown, repeated, missing, zero, or oversized values with actionable errors.
+Implement checked `Duration` to `u64` nanosecond conversion, sorted median calculation without changing recorded sample order, throughput, ratio calculation, JSON serialization, and `RunConfig::parse_from`. Parse only `--samples`, `--sizes`, `--json`, and the valueless `--warmup-proofs`; reject unknown, repeated, missing, zero, or oversized values with actionable errors. Default `warmup_proofs` to false and record the selected mode in JSON.
 
 **Step 4: Run the focused tests**
 
@@ -388,9 +391,11 @@ The runner should call `lean_multisig::setup()` before fixture creation. For eve
 3. `distinct_claim_aggregate`: Lean `merge_claims(signatures.clone())` versus Lighthouse aggregate construction.
 4. `distinct_claim_verify`: Lean `verify_claims` versus Lighthouse `aggregate_verify` with corresponding messages/public keys.
 
-Also measure Lighthouse `verify_signature_sets` as a supplemental production batch-verification row. Build all fixtures and precomputed verification artifacts outside timed regions. After every timed aggregate sample, verify its result before retaining the duration. Use `std::time::Instant` and collect exactly `RunConfig.samples` durations.
+Also measure Lighthouse `verify_signature_sets` as a supplemental production batch-verification row. Build all fixtures and precomputed verification artifacts outside timed regions. Clone one consumed Lean signature vector immediately before each timer so memory remains O(input size). After every timed aggregate sample, verify its result before retaining the duration. Use `std::time::Instant` and collect exactly `RunConfig.samples` durations.
 
-Write JSON only when `--json PATH` is supplied. Print the table to stdout in all cases. Include the semantic warning and pinned Lighthouse revision above the table.
+Default Lean proof measurements are first-use-inclusive and perform no proof warm-up. With `--warmup-proofs`, generate and verify exactly one untimed same-claim proof and one untimed distinct-claim proof per input size, then reuse them for verification fixtures. Calibrate every Lighthouse operation outside recorded samples to at least a modest batch duration (10–25 ms), record normalized per-operation durations, and require every verification iteration to succeed. Calibration serves as the cheap BLS warm-up. Alternate which implementation runs first for paired samples, starting with Lighthouse for sample zero, without sleeps or cooldowns.
+
+Write JSON only when `--json PATH` is supplied. Print the table to stdout in all cases. Include the semantic warning, pinned Lighthouse revision, and a prominent first-use-inclusive or steady-state mode label above the table. Share one revision constant between the runner and a test that guards agreement with the manifest pin.
 
 **Step 4: Run non-proving tests and compile the release binary**
 
@@ -410,9 +415,12 @@ Run:
 ```bash
 cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
   --samples 1 --sizes 1 --json /tmp/lean-multisig-benchmark-smoke.json
+cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
+  --samples 1 --sizes 1 --warmup-proofs \
+  --json /tmp/lean-multisig-benchmark-warm-smoke.json
 ```
 
-Expected: all five rows are printed, JSON is written, every proof verifies, and the process exits 0. Do not treat the one-sample numbers as publishable results.
+Expected: both modes print all five rows, JSON records the correct proof-warmup mode, every proof verifies, and each process exits 0. The warm run executes exactly one additional same-claim proof and one additional distinct-claim proof. Do not treat the one-sample numbers as publishable results.
 
 **Step 6: Commit**
 
@@ -540,4 +548,3 @@ Skip this commit if review requires no changes.
 **Step 7: Finish the development branch**
 
 Use `superpowers:finishing-a-development-branch` and present the integration choices. Preserve the user's uncommitted root `README.md` change throughout integration.
-
