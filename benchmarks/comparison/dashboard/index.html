@@ -14,7 +14,6 @@
       --muted: #667085;
       --border: #d9dfeb;
       --lean: #6655d9;
-      --bls: #087e8b;
       --shadow: 0 10px 32px rgb(23 32 51 / 8%);
     }
 
@@ -27,7 +26,6 @@
         --muted: #a9b4c7;
         --border: #303b52;
         --lean: #a99cff;
-        --bls: #64d4dc;
         --shadow: 0 10px 32px rgb(0 0 0 / 20%);
       }
     }
@@ -172,7 +170,6 @@
 
     tbody tr:last-child td { border-bottom: 0; }
     .lean-value { color: var(--lean); }
-    .bls-value { color: var(--bls); }
     .muted-value { color: var(--muted); }
 
     section.explainer {
@@ -372,7 +369,7 @@
       for (const row of rows) {
         const tableRow = node("tr");
         row.forEach((cell, index) => {
-          const className = index === 1 ? "lean-value" : index === 2 ? "bls-value" : undefined;
+          const className = index === 1 ? "lean-value" : undefined;
           tableRow.append(node("td", cell, cell === dash ? "muted-value" : className));
         });
         body.append(tableRow);

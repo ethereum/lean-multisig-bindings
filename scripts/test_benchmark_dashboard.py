@@ -109,6 +109,11 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertNotIn("BLS ops/s", html)
         self.assertNotIn("function throughput", html)
 
+    def test_dashboard_uses_neutral_text_for_lighthouse_values(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("--bls:", html)
+        self.assertNotIn("bls-value", html)
+
     def test_dashboard_uses_leanvm_in_user_facing_copy(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
         for old_label in (
