@@ -46,12 +46,18 @@ defaults independently to `1,8,16`. The backward-compatible `--sizes` option
 sets both axes, remains capped at 16, and cannot be combined with either
 specific size option.
 
-Add `--warmup-proofs` for steady-state proof measurements. Without it, proof
-timings include first-use effects. Add `--json PATH` to save the unchanged
-machine-readable report alongside the table printed to stdout. Fixture setup,
-post-timing correctness checks, and the Lean input clone performed immediately
-before aggregation are outside the timed region. Lighthouse operations are
-calibrated in batches of at least 10 ms and reported per operation.
+Add `--warmup-proofs` for steady-state proof measurements. Without it, no
+explicit Lean proof warm-up runs; recorded samples may include process-local
+first-use effects. Add `--json PATH` to save the unchanged machine-readable
+report alongside the table printed to stdout. Fixture setup, post-timing
+correctness checks, and the Lean input clone performed immediately before
+aggregation are outside the timed region. Lighthouse operations are calibrated
+in batches of at least 10 ms and reported per operation.
+
+`distinct_claim_verify_conceptual` uses Lighthouse `aggregate_verify`, which
+Lighthouse documents as an EF-test-only, non-production path. Use the
+Lighthouse-only `lighthouse_signature_sets_verify` supplemental row for its
+production-oriented batch-verification measurement.
 
 The 512-signer fixture-shape regression validates every raw XMSS signature and
 takes minutes, so ordinary `cargo test` skips it. Run it explicitly when

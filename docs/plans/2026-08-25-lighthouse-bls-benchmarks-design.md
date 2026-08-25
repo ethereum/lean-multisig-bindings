@@ -48,10 +48,10 @@ The suite will compare:
 | Same-claim aggregation | Generate a recursive proof | Combine BLS signatures |
 | Same-claim verification | Verify the proof and exact signer set | Fast aggregate verification |
 | Distinct-claim aggregation | Generate a multi-claim proof | Combine distinct-message BLS signatures |
-| Distinct-claim verification | Verify exact claim/signer groups | Aggregate verification |
+| Distinct-claim verification (conceptual/non-production BLS comparison) | Verify exact claim/signer groups | `aggregate_verify` (EF-test-only path) |
 | Production BLS batch verification | Not a direct Lean operation | Lighthouse `verify_signature_sets` |
 
-The distinct-message report will label Lighthouse aggregate verification as a conceptual comparison because Lighthouse documents that method as an EF-test path. It will separately report `verify_signature_sets`, Lighthouse's production-oriented batch-verification path.
+The distinct-message report names the paired row `distinct_claim_verify_conceptual` because Lighthouse documents `aggregate_verify` as an EF-test-only path that is presently not used in production. It separately names the Lighthouse-only supplemental row `lighthouse_signature_sets_verify` for Lighthouse's production-oriented `verify_signature_sets` path.
 
 ## Measurement model
 
@@ -61,7 +61,7 @@ Expensive proof generation will use a dedicated release-mode runner instead of C
 
 - Initialize Lean proving outside timed regions.
 - Construct keys, signatures, claims, and expected signer sets outside timed regions.
-- Default to first-use-inclusive Lean proof timings with no untimed Lean proof generation. An explicit valueless `--warmup-proofs` flag switches to steady-state mode by generating and verifying exactly one same-claim proof and one distinct-claim proof per input size before recorded samples; those proofs are reused as verification fixtures.
+- Default to no explicit Lean proof warm-up; recorded samples may include process-local first-use effects. An explicit valueless `--warmup-proofs` flag switches to steady-state mode by generating and verifying exactly one same-claim proof and one distinct-claim proof per input size before recorded samples; those proofs are reused as verification fixtures.
 - Calibrate Lighthouse operations outside recorded samples to a minimum batch duration, then record normalized per-operation durations. Calibration doubles as the cheap BLS warm-up.
 - Alternate whether Lighthouse or Lean is measured first for paired samples to reduce systematic ordering and thermal bias.
 - Clone each consumed Lean signature vector immediately before its timer so allocation is excluded without retaining `samples × size` copies.
@@ -71,7 +71,7 @@ Expensive proof generation will use a dedicated release-mode runner instead of C
 - Print a human-readable table and emit JSON suitable for later plotting or archival.
 - Verify every produced artifact outside its timed region before accepting the sample.
 
-The runner will reject zero samples, repeated `--warmup-proofs` flags, and distinct-claim counts above leanMultisig's limit of 16. JSON records whether proof warm-up was enabled, and the human-readable preamble labels the run as first-use-inclusive or steady-state. Any setup, construction, proving, serialization, or verification error will include workload and input-size context and terminate with a nonzero exit status.
+The runner will reject zero samples, repeated `--warmup-proofs` flags, and distinct-claim counts above leanMultisig's limit of 16. JSON records whether proof warm-up was enabled, and the human-readable preamble labels the run as no-explicit-warm-up or steady-state. Any setup, construction, proving, serialization, or verification error will include workload and input-size context and terminate with a nonzero exit status.
 
 ## Correctness and maintenance
 

@@ -272,7 +272,7 @@ fn benchmark_report_round_trips_through_json() {
         samples: 1,
         proof_warmup: true,
         comparisons: vec![ComparisonReport::new(
-            "same_claim_aggregate",
+            "distinct_claim_verify_conceptual",
             8,
             lean,
             lighthouse.clone(),
@@ -281,7 +281,7 @@ fn benchmark_report_round_trips_through_json() {
         )
         .unwrap()],
         supplemental: vec![SupplementalReport {
-            workload: "verify_signature_sets".to_owned(),
+            workload: "lighthouse_signature_sets_verify".to_owned(),
             input_size: 8,
             lighthouse,
         }],
@@ -292,6 +292,11 @@ fn benchmark_report_round_trips_through_json() {
 
     assert_eq!(restored, report);
     assert!(restored.proof_warmup);
+    assert!(json.contains("\"workload\": \"distinct_claim_verify_conceptual\""));
+    assert!(json.contains("\"workload\": \"lighthouse_signature_sets_verify\""));
+    assert!(report
+        .to_table()
+        .contains("distinct_claim_verify_conceptual"));
 }
 
 #[test]
@@ -348,7 +353,7 @@ fn table_visibly_labels_supplemental_rows_as_lighthouse_only() {
         proof_warmup: false,
         comparisons: vec![],
         supplemental: vec![SupplementalReport {
-            workload: "verify_signature_sets".to_owned(),
+            workload: "lighthouse_signature_sets_verify".to_owned(),
             input_size: 8,
             lighthouse,
         }],
@@ -356,7 +361,7 @@ fn table_visibly_labels_supplemental_rows_as_lighthouse_only() {
 
     let table = report.to_table();
 
-    assert!(table.contains("verify_signature_sets"));
+    assert!(table.contains("lighthouse_signature_sets_verify"));
     assert!(table.contains("Lighthouse-only"));
     assert!(table.contains("500.000 us"));
 }

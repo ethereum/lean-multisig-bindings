@@ -12,6 +12,9 @@ use lean_multisig_comparison::{
 
 const SEMANTIC_WARNING: &str = "WARNING: leanMultisig aggregation generates zkVM proofs, while Lighthouse BLS aggregation combines elliptic-curve points; these operations do not have identical security semantics.";
 const MIN_LIGHTHOUSE_BATCH_DURATION: Duration = Duration::from_millis(10);
+const DISTINCT_CLAIM_VERIFY_WORKLOAD: &str = "distinct_claim_verify_conceptual";
+const LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD: &str = "lighthouse_signature_sets_verify";
+const DISTINCT_VERIFY_NOTE: &str = "NOTE: distinct_claim_verify_conceptual uses Lighthouse aggregate_verify, an EF-test-only non-production path; use the Lighthouse-only lighthouse_signature_sets_verify row for production-oriented BLS batch verification.";
 
 fn main() -> Result<()> {
     let config =
@@ -108,15 +111,8 @@ fn run(config: RunConfig) -> Result<()> {
 
     println!("{SEMANTIC_WARNING}");
     println!("Pinned Lighthouse revision: {LIGHTHOUSE_REVISION}");
-    if config.warmup_proofs {
-        println!(
-            "PROOF TIMING MODE: steady-state (--warmup-proofs; one verified untimed Lean proof per aggregation workload and size)."
-        );
-    } else {
-        println!(
-            "PROOF TIMING MODE: first-use-inclusive (default; no untimed Lean proof generation)."
-        );
-    }
+    println!("{}", proof_timing_mode_label(config.warmup_proofs));
+    println!("{DISTINCT_VERIFY_NOTE}");
     if config.samples == 1 {
         println!("NOTE: a one-sample smoke run is not a publishable benchmark result.");
     }
@@ -438,7 +434,7 @@ fn measure_distinct_claim_verify(
     samples: usize,
     size: usize,
 ) -> Result<ComparisonReport> {
-    const WORKLOAD: &str = "distinct_claim_verify";
+    const WORKLOAD: &str = DISTINCT_CLAIM_VERIFY_WORKLOAD;
     let lighthouse_iterations =
         calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
             let (elapsed, all_valid) = time_bool_batch(iterations, || {
@@ -507,7 +503,7 @@ fn measure_signature_sets_verify(
     samples: usize,
     size: usize,
 ) -> Result<SupplementalReport> {
-    const WORKLOAD: &str = "verify_signature_sets";
+    const WORKLOAD: &str = LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD;
     let signature_sets = fixtures.bls_signature_sets();
     let lighthouse_iterations =
         calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
@@ -686,6 +682,14 @@ fn run_optional_warmup<T>(enabled: bool, warmup: impl FnOnce() -> Result<T>) -> 
     }
 }
 
+fn proof_timing_mode_label(warmup_proofs: bool) -> &'static str {
+    if warmup_proofs {
+        "PROOF TIMING MODE: steady-state (--warmup-proofs; one verified untimed Lean proof per aggregation workload and size)."
+    } else {
+        "PROOF TIMING MODE: no explicit proof warm-up (default; recorded samples may include process-local first-use effects)."
+    }
+}
+
 fn summarize(
     durations: Vec<std::time::Duration>,
     workload: &str,
@@ -854,5 +858,31 @@ mod tests {
         .unwrap();
         assert_eq!(enabled, Some(2));
         assert_eq!(invocations, 1);
+    }
+
+    #[test]
+    fn proof_timing_mode_labels_are_accurate() {
+        let default = proof_timing_mode_label(false);
+        assert!(default.contains("no explicit proof warm-up"));
+        assert!(!default.contains("first-use-inclusive"));
+
+        let steady_state = proof_timing_mode_label(true);
+        assert!(steady_state.contains("steady-state"));
+        assert!(steady_state.contains("--warmup-proofs"));
+    }
+
+    #[test]
+    fn distinct_verification_labels_expose_lighthouse_status() {
+        assert_eq!(
+            DISTINCT_CLAIM_VERIFY_WORKLOAD,
+            "distinct_claim_verify_conceptual"
+        );
+        assert_eq!(
+            LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD,
+            "lighthouse_signature_sets_verify"
+        );
+        assert!(DISTINCT_VERIFY_NOTE.contains("EF-test"));
+        assert!(DISTINCT_VERIFY_NOTE.contains("non-production"));
+        assert!(DISTINCT_VERIFY_NOTE.contains(LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD));
     }
 }
