@@ -1,17 +1,19 @@
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use lean_multisig_comparison::{BlsFixtureSet, FixtureSet, MAX_DISTINCT_CLAIMS};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use lean_multisig_comparison::{FixtureSet, MAX_DISTINCT_CLAIMS};
 
-const SAME_CLAIM_SIZES: [usize; 8] = [1, 8, 16, 32, 64, 128, 256, 512];
-const DISTINCT_CLAIM_SIZES: [usize; 3] = [1, 8, 16];
+const INDEPENDENT_SIGNATURE_SIZES: [usize; 3] = [1, 8, 16];
 
-fn aggregate_bls(signatures: &[lighthouse_bls::Signature]) -> lighthouse_bls::AggregateSignature {
-    let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
-    for signature in signatures {
-        aggregate.add_assign(signature);
-    }
-    aggregate
+fn verify_lean_independent_signatures(fixtures: &FixtureSet) -> bool {
+    fixtures
+        .lean_signatures()
+        .iter()
+        .zip(fixtures.lean_public_keys())
+        .zip(fixtures.lean_claims())
+        .all(|((signature, public_key), claim)| {
+            lean_multisig::verify(signature, std::slice::from_ref(public_key), claim).is_ok()
+        })
 }
 
 fn single_operations(criterion: &mut Criterion) {
@@ -152,127 +154,29 @@ fn single_operations(criterion: &mut Criterion) {
     group.finish();
 }
 
-fn lighthouse_same_claim_aggregate(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("lighthouse_same_claim_aggregate");
-    for size in SAME_CLAIM_SIZES {
-        group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &size,
-            |bencher, &size| {
-                let fixtures = BlsFixtureSet::same_claim(size)
-                    .expect("same-claim BLS fixture should be valid");
-                let signatures = fixtures.signatures();
-                let aggregate = aggregate_bls(signatures);
-                assert!(fixtures.verify_same_claim_aggregate(&aggregate));
+fn independent_signature_verification(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("independent_signatures_verify");
 
-                bencher.iter(|| {
-                    let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
-                    for signature in black_box(signatures) {
-                        aggregate.add_assign(black_box(signature));
-                    }
-                    black_box(aggregate)
-                });
+    for size in INDEPENDENT_SIGNATURE_SIZES {
+        let fixtures = FixtureSet::distinct_claims(size)
+            .expect("independent-signature fixtures should be valid");
+        let bls_signature_sets = fixtures.bls_signature_sets();
+        assert!(verify_lean_independent_signatures(&fixtures));
+        assert!(lighthouse_bls::verify_signature_sets(
+            bls_signature_sets.iter()
+        ));
+
+        group.bench_with_input(
+            BenchmarkId::new("lean", size),
+            &fixtures,
+            |bencher, fixtures| {
+                bencher.iter(|| black_box(verify_lean_independent_signatures(black_box(fixtures))));
             },
         );
-    }
-    group.finish();
-}
-
-fn lighthouse_same_claim_verify(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("lighthouse_same_claim_verify");
-    for size in SAME_CLAIM_SIZES {
-        group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &size,
-            |bencher, &size| {
-                let fixtures = BlsFixtureSet::same_claim(size)
-                    .expect("same-claim BLS fixture should be valid");
-                let aggregate = fixtures.aggregate();
-                let message = fixtures.messages()[0];
-                let public_keys = fixtures.public_keys().iter().collect::<Vec<_>>();
-                assert!(aggregate.fast_aggregate_verify(message, &public_keys));
-
-                bencher.iter(|| {
-                    black_box(
-                        black_box(&aggregate)
-                            .fast_aggregate_verify(black_box(message), black_box(&public_keys)),
-                    )
-                });
-            },
-        );
-    }
-    group.finish();
-}
-
-fn lighthouse_distinct_claim_aggregate(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("lighthouse_distinct_claim_aggregate");
-    for size in DISTINCT_CLAIM_SIZES {
-        group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &size,
-            |bencher, &size| {
-                let fixtures = BlsFixtureSet::distinct_claims(size)
-                    .expect("distinct-claim BLS fixture should be valid");
-                let signatures = fixtures.signatures();
-                let aggregate = aggregate_bls(signatures);
-                assert!(fixtures.verify_distinct_claim_aggregate(&aggregate));
-
-                bencher.iter(|| {
-                    let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
-                    for signature in black_box(signatures) {
-                        aggregate.add_assign(black_box(signature));
-                    }
-                    black_box(aggregate)
-                });
-            },
-        );
-    }
-    group.finish();
-}
-
-fn lighthouse_distinct_claim_verify(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("lighthouse_distinct_claim_verify");
-    for size in DISTINCT_CLAIM_SIZES {
-        group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &size,
-            |bencher, &size| {
-                let fixtures = BlsFixtureSet::distinct_claims(size)
-                    .expect("distinct-claim BLS fixture should be valid");
-                let aggregate = fixtures.aggregate();
-                let messages = fixtures.messages();
-                let public_keys = fixtures.public_keys().iter().collect::<Vec<_>>();
-                assert!(aggregate.aggregate_verify(messages, &public_keys));
-
-                bencher.iter(|| {
-                    black_box(
-                        black_box(&aggregate)
-                            .aggregate_verify(black_box(messages), black_box(&public_keys)),
-                    )
-                });
-            },
-        );
-    }
-    group.finish();
-}
-
-fn lighthouse_signature_sets_verify(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("lighthouse_signature_sets_verify");
-    for size in DISTINCT_CLAIM_SIZES {
-        group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &size,
-            |bencher, &size| {
-                let fixtures = BlsFixtureSet::distinct_claims(size)
-                    .expect("distinct-claim BLS fixture should be valid");
-                let signature_sets = fixtures.signature_sets();
-                assert!(lighthouse_bls::verify_signature_sets(signature_sets.iter()));
-
+            BenchmarkId::new("lighthouse", size),
+            &bls_signature_sets,
+            |bencher, signature_sets| {
                 bencher.iter(|| {
                     black_box(lighthouse_bls::verify_signature_sets(black_box(
                         signature_sets.iter(),
@@ -281,16 +185,13 @@ fn lighthouse_signature_sets_verify(criterion: &mut Criterion) {
             },
         );
     }
+
     group.finish();
 }
 
 criterion_group!(
     benches,
     single_operations,
-    lighthouse_same_claim_aggregate,
-    lighthouse_same_claim_verify,
-    lighthouse_distinct_claim_aggregate,
-    lighthouse_distinct_claim_verify,
-    lighthouse_signature_sets_verify,
+    independent_signature_verification
 );
 criterion_main!(benches);

@@ -232,7 +232,7 @@
       <div class="section-heading">
         <div>
           <h2 id="fast-title">Fast operations</h2>
-          <p>Native operations measured with Criterion.</p>
+          <p>Key and raw-signature operations without aggregation.</p>
         </div>
         <span class="stamp" id="fast-stamp">Loading…</span>
       </div>
@@ -269,6 +269,10 @@
         <div>
           <dt>Distinct-claim verification</dt>
           <dd>Checks the aggregate against every signer-and-message pair. The “conceptual” Lighthouse row uses its non-production aggregate-verify path.</dd>
+        </div>
+        <div>
+          <dt>Independent signature verification</dt>
+          <dd>Checks a set of separate signer-and-message tuples. LeanVM verifies each raw XMSS signature; Lighthouse verifies the equivalent BLS tuples together with its production batch-verification API.</dd>
         </div>
         <div>
           <dt>Proof size and signature size</dt>
@@ -384,16 +388,16 @@
       "Same-claim verification",
       "Distinct-claim aggregation",
       "Distinct-claim verification",
+      "Independent signature verification",
     ];
 
     function benchmarkGroup(workload) {
       if (workload === "same_claim_aggregate") return "Same-claim aggregation";
       if (workload === "same_claim_verify") return "Same-claim verification";
       if (workload === "distinct_claim_aggregate") return "Distinct-claim aggregation";
+      if (workload === "independent_signatures_verify") return "Independent signature verification";
       if (workload === "distinct_claim_verify"
-          || workload === "distinct_claim_verify_conceptual"
-          || workload === "signature_sets_verify"
-          || workload === "lighthouse_signature_sets_verify") {
+          || workload === "distinct_claim_verify_conceptual") {
         return "Distinct-claim verification";
       }
       return "Basic operations";
@@ -450,19 +454,21 @@
         if (!groups.has(key)) groups.set(key, { workload: result.workload, inputSize: result.input_size });
         groups.get(key)[result.implementation] = result;
       }
-      const rows = Array.from(groups.values()).map(group => {
-        const lean = group.lean?.median_ns;
-        const lighthouse = group.lighthouse?.median_ns;
-        return {
-          workload: group.workload,
-          cells: [
-            operationLabel(group.workload, group.inputSize),
-            duration(lean),
-            duration(lighthouse),
-            ratio(lean, lighthouse),
-          ],
-        };
-      });
+      const rows = Array.from(groups.values())
+        .filter(group => group.lean && group.lighthouse)
+        .map(group => {
+          const lean = group.lean.median_ns;
+          const lighthouse = group.lighthouse.median_ns;
+          return {
+            workload: group.workload,
+            cells: [
+              operationLabel(group.workload, group.inputSize),
+              duration(lean),
+              duration(lighthouse),
+              ratio(lean, lighthouse),
+            ],
+          };
+        });
       addGroupedTables(target, ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS"], rows);
       document.getElementById("fast-stamp").textContent = new Date(data.measured_at).toLocaleString();
     }
@@ -489,19 +495,6 @@
           bytes(result.lighthouse_artifact_bytes),
         ],
       }));
-      for (const result of data.supplemental || []) {
-        rows.push({
-          workload: result.workload,
-          cells: [
-            operationLabel(result.workload, result.input_size),
-            dash,
-            duration(result.lighthouse?.median_ns),
-            dash,
-            dash,
-            dash,
-          ],
-        });
-      }
       addGroupedTables(target, ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM proof size", "BLS signature size"], rows);
       document.getElementById("slow-stamp").textContent = new Date(data.measured_at).toLocaleString();
     }

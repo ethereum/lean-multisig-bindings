@@ -8,6 +8,7 @@ dashboard_builder=scripts/build_benchmark_dashboard.py
 dashboard_test=scripts/test_benchmark_dashboard.py
 dashboard_html=benchmarks/comparison/dashboard/index.html
 comparison_bench=benchmarks/comparison/benches/comparison.rs
+slow_comparison=benchmarks/comparison/src/bin/slow_comparison.rs
 
 fail() {
   echo "benchmark CI policy: $*" >&2
@@ -49,11 +50,15 @@ check_full_action_pins() {
   [ -z "$unpinned" ] || fail "$file: every uses reference must have a full immutable SHA pin: $unpinned"
 }
 
-for file in "$pr_workflow" "$history_workflow" "$dashboard_builder" "$dashboard_test" "$dashboard_html" "$comparison_bench"; do
+for file in "$pr_workflow" "$history_workflow" "$dashboard_builder" "$dashboard_test" "$dashboard_html" "$comparison_bench" "$slow_comparison"; do
   require_file "$file"
 done
 
 reject_text "$comparison_bench" 'benchmark_group\("public_key"\)' 'public-key derivation timing benchmark'
+reject_text "$comparison_bench" '^fn lighthouse_(same_claim|distinct_claim|signature_sets)' 'Lighthouse-only fast aggregate benchmark'
+require_text "$comparison_bench" 'benchmark_group\("independent_signatures_verify"\)' 'paired independent-signature verification benchmark'
+require_text "$comparison_bench" 'verify_signature_sets' 'batched BLS verification side of the independent-signature workload'
+reject_text "$slow_comparison" 'measure_signature_sets_verify|LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD' 'Lighthouse-only supplemental signature-set benchmark'
 require_text "$comparison_bench" '"public_key/lean".*lean_public_key\.len' 'LeanVM serialized public-key size'
 require_text "$comparison_bench" '"public_key/lighthouse".*bls_public_key\.serialize\(\)\.len' 'Lighthouse serialized public-key size'
 
@@ -73,7 +78,9 @@ reject_text "$pr_workflow" 'benchmark-slow|github\.event\.action == .labeled.|gi
 require_literal "$pr_workflow" 'timeout-minutes: 30' '30-minute fast timeout'
 require_literal "$pr_workflow" 'timeout-minutes: 180' '180-minute slow timeout'
 require_literal "$pr_workflow" 'retention-days: 14' '14-day artifact retention'
-require_literal "$pr_workflow" '--output-format bencher' 'Bencher-format Criterion output'
+reject_text "$pr_workflow" '--output-format bencher' 'lossy Bencher-format Criterion output'
+require_literal "$pr_workflow" 'rm -rf -- target/criterion' 'stale Criterion result cleanup'
+require_literal "$pr_workflow" '--criterion-dir target/criterion' 'structured Criterion estimates input'
 require_literal "$pr_workflow" 'python3 scripts/build_benchmark_dashboard.py fast' 'fast dashboard normalization'
 require_literal "$pr_workflow" 'python3 scripts/build_benchmark_dashboard.py slow' 'slow dashboard normalization'
 require_literal "$pr_workflow" '--output benchmark-artifacts/fast/dashboard.json' 'fast normalized artifact'
@@ -125,7 +132,9 @@ require_literal "$history_workflow" "default: '1,8,16,256,512'" 'manual same-cla
 require_literal "$history_workflow" "inputs.same_sizes || '1,8,16,256,512'" 'main-push same-claim default sizes'
 require_literal "$history_workflow" "inputs.distinct_sizes || '1,8,16'" 'main-push distinct-claim default sizes'
 require_literal "$history_workflow" '--warmup-proofs' 'proof warm-up policy'
-require_literal "$history_workflow" '--output-format bencher' 'Bencher-format fast output'
+reject_text "$history_workflow" '--output-format bencher' 'lossy Bencher-format Criterion output'
+require_literal "$history_workflow" 'rm -rf -- target/criterion' 'stale Criterion result cleanup'
+require_literal "$history_workflow" '--criterion-dir target/criterion' 'structured Criterion estimates input'
 require_literal "$history_workflow" '/usr/bin/time -v -o benchmark-artifacts/slow/resource-usage.txt' 'slow peak RSS measurement'
 require_literal "$history_workflow" 'python3 scripts/build_benchmark_dashboard.py fast' 'fast dashboard normalization'
 require_literal "$history_workflow" 'python3 scripts/build_benchmark_dashboard.py slow' 'slow dashboard normalization'

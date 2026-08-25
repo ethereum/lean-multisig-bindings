@@ -52,6 +52,7 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn("same-claim aggregation", lowered)
         self.assertIn("same message", lowered)
         self.assertIn("distinct-claim aggregation", lowered)
+        self.assertIn("independent signature verification", lowered)
         self.assertIn("proof size", lowered)
         self.assertIn("peak rss", lowered)
 
@@ -59,6 +60,11 @@ class DashboardBuilderTests(unittest.TestCase):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
         self.assertIn("Aggregate proof generation and verification", html)
         self.assertNotIn("Proof-backed operations", html)
+
+    def test_dashboard_describes_fast_operations_without_tooling_jargon(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("Key and raw-signature operations without aggregation.", html)
+        self.assertNotIn("Native operations measured with Criterion.", html)
 
     def test_dashboard_metadata_wraps_and_omits_secondary_details(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
@@ -80,7 +86,12 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn('"Same-claim verification"', html)
         self.assertIn('"Distinct-claim aggregation"', html)
         self.assertIn('"Distinct-claim verification"', html)
-        self.assertIn('|| workload === "signature_sets_verify"', html)
+        self.assertIn('"Independent signature verification"', html)
+        self.assertNotIn('"Lighthouse Signature Sets Verify"', html)
+
+    def test_fast_dashboard_only_shows_paired_implementation_rows(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("filter(group => group.lean && group.lighthouse)", html)
 
     def test_dashboard_labels_proof_and_signature_sizes_explicitly(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
@@ -113,11 +124,12 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn("LeanVM / BLS", html)
         self.assertIn("LeanVM proof size", html)
 
-    def test_fast_command_normalizes_real_bencher_rows(self):
+    def test_fast_command_normalizes_structured_criterion_estimates(self):
         dashboard = load_dashboard_module()
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             criterion = directory / "criterion.txt"
+            criterion_data = directory / "criterion"
             environment = directory / "environment.txt"
             output = directory / "fast.json"
             criterion.write_text(
@@ -130,13 +142,30 @@ class DashboardBuilderTests(unittest.TestCase):
                         "artifact-size public_key/lighthouse 48",
                         "artifact-size raw_signature/lean 1214",
                         "artifact-size raw_signature/lighthouse 96",
-                        "test key_creation/lean ... bench:   5,937,262 ns/iter (+/- 658,840)",
-                        "test key_creation/lighthouse ... bench:         843 ns/iter (+/- 8)",
-                        "test lighthouse_same_claim_aggregate/512 ... bench:     760,779 ns/iter (+/- 5,231)",
                     ]
                 ),
                 encoding="utf-8",
             )
+            for name, median, deviation in (
+                ("key_creation/lean", 5_937_262, 658_840),
+                ("key_creation/lighthouse", 843, 8),
+                ("independent_signatures_verify/lean/8", 12_000, 200),
+                ("independent_signatures_verify/lighthouse/8", 10_000, 100),
+            ):
+                result_dir = criterion_data.joinpath(*name.split("/"), "new")
+                result_dir.mkdir(parents=True)
+                (result_dir / "benchmark.json").write_text(
+                    json.dumps({"full_id": name}), encoding="utf-8"
+                )
+                (result_dir / "estimates.json").write_text(
+                    json.dumps(
+                        {
+                            "median": {"point_estimate": median},
+                            "std_dev": {"point_estimate": deviation},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
             environment.write_text(
                 "\n".join(
                     [
@@ -165,6 +194,8 @@ class DashboardBuilderTests(unittest.TestCase):
                         "fast",
                         "--input",
                         str(criterion),
+                        "--criterion-dir",
+                        str(criterion_data),
                         "--environment",
                         str(environment),
                         "--output",
@@ -184,7 +215,8 @@ class DashboardBuilderTests(unittest.TestCase):
             )
             self.assertEqual(
                 data["benchmarks"],
-                [
+                sorted(
+                    [
                     {
                         "name": "key_creation/lean",
                         "workload": "key_creation",
@@ -202,14 +234,24 @@ class DashboardBuilderTests(unittest.TestCase):
                         "deviation_ns": 8,
                     },
                     {
-                        "name": "lighthouse_same_claim_aggregate/512",
-                        "workload": "same_claim_aggregate",
-                        "implementation": "lighthouse",
-                        "input_size": 512,
-                        "median_ns": 760_779,
-                        "deviation_ns": 5_231,
+                        "name": "independent_signatures_verify/lean/8",
+                        "workload": "independent_signatures_verify",
+                        "implementation": "lean",
+                        "input_size": 8,
+                        "median_ns": 12_000,
+                        "deviation_ns": 200,
                     },
-                ],
+                    {
+                        "name": "independent_signatures_verify/lighthouse/8",
+                        "workload": "independent_signatures_verify",
+                        "implementation": "lighthouse",
+                        "input_size": 8,
+                        "median_ns": 10_000,
+                        "deviation_ns": 100,
+                    },
+                    ],
+                    key=lambda result: result["name"],
+                ),
             )
             self.assertEqual(
                 data["artifacts"],
