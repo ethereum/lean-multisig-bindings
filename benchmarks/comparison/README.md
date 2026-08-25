@@ -113,8 +113,9 @@ The history workflow has three modes:
 - A weekly Monday 03:17 UTC schedule runs the slow suite with three samples,
   sizes `1,8,16`, and proof warm-up; its artifacts are retained for 90 days.
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
-  count and independent same/distinct size lists. Manual slow runs always use
-  proof warm-up.
+  count (minimum 3) and independent same/distinct size lists. Manual slow runs
+  always use proof warm-up. One-sample smoke runs remain local-only and cannot
+  be published by the history workflow.
 
 For example, this explicitly opts into the large same-claim sweep while keeping
 distinct claims within their hard limit of 16:

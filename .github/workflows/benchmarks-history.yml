@@ -160,8 +160,8 @@ jobs:
       - name: Validate manual benchmark inputs
         shell: bash
         run: |
-          [[ "$BENCH_SAMPLES" =~ ^[1-9][0-9]*$ ]] || {
-            echo 'samples must be a positive integer' >&2
+          [[ "$BENCH_SAMPLES" =~ ^[0-9]+$ ]] && (( 10#$BENCH_SAMPLES >= 3 )) || {
+            echo 'samples must be an integer greater than or equal to 3' >&2
             exit 1
           }
           [[ "$BENCH_SAME_SIZES" =~ ^[0-9]+(,[0-9]+)*$ ]] || {
