@@ -2,6 +2,7 @@
 set -eu
 
 pr_workflow=.github/workflows/benchmarks-pr.yml
+history_workflow=.github/workflows/benchmarks-history.yml
 ci_workflow=.github/workflows/ci.yml
 
 fail() {
@@ -92,6 +93,101 @@ require_text "$pr_workflow" '401aff9a7a08acb9d27b64936a90db81024cff97' 'pinned R
 require_text "$pr_workflow" '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' 'pinned artifact upload action'
 require_text "$pr_workflow" '52576c92bccf6ac60c8223ec7eb2565637cae9ba' 'pinned benchmark reporting action'
 check_full_action_pins "$pr_workflow"
+
+require_file "$history_workflow"
+require_text "$history_workflow" '^  push:$' 'push trigger'
+require_text "$history_workflow" '^      - main$' 'main branch restriction'
+require_literal "$history_workflow" 'benchmarks/comparison/**' 'comparison benchmark path filter'
+require_literal "$history_workflow" 'bindings/rust/**' 'Rust binding path filter'
+require_literal "$history_workflow" 'Cargo.lock' 'workspace lockfile path filter'
+require_text "$history_workflow" '^  schedule:$' 'weekly schedule trigger'
+require_literal "$history_workflow" "cron: '17 3 * * 1'" 'weekly schedule cadence'
+require_text "$history_workflow" '^  workflow_dispatch:$' 'manual trigger'
+reject_text "$history_workflow" 'pull_request|pull_request_target|workflow_run' 'untrusted history trigger'
+require_text "$history_workflow" '^permissions:$' 'top-level permissions block'
+require_text "$history_workflow" '^  contents: read$' 'read-only measurement permission'
+require_literal "$history_workflow" 'group: benchmark-history' 'shared history concurrency group'
+require_literal "$history_workflow" 'cancel-in-progress: false' 'non-cancelling history concurrency'
+require_literal "$history_workflow" "if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fast' || inputs.suite == 'all'))" 'fast trigger routing'
+require_literal "$history_workflow" "if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'slow' || inputs.suite == 'all'))" 'slow trigger routing'
+require_text "$history_workflow" '^      suite:$' 'manual suite input'
+require_text "$history_workflow" '^      samples:$' 'manual sample input'
+require_text "$history_workflow" '^      same_sizes:$' 'manual same-claim size input'
+require_text "$history_workflow" '^      distinct_sizes:$' 'manual distinct-claim size input'
+require_text "$history_workflow" '^          - fast$' 'manual fast suite choice'
+require_text "$history_workflow" '^          - slow$' 'manual slow suite choice'
+require_text "$history_workflow" '^          - all$' 'manual all-suites choice'
+require_literal "$history_workflow" '[[ "$BENCH_SAMPLES" =~ ^[1-9][0-9]*$ ]]' 'positive sample validation'
+require_literal "$history_workflow" '[[ "$BENCH_SAME_SIZES" =~ ^[0-9]+(,[0-9]+)*$ ]]' 'same-claim size syntax validation'
+require_literal "$history_workflow" '[[ "$BENCH_DISTINCT_SIZES" =~ ^[0-9]+(,[0-9]+)*$ ]]' 'distinct-claim size syntax validation'
+require_literal "$history_workflow" '--warmup-proofs' 'steady-state proof policy'
+require_literal "$history_workflow" '--output-format bencher' 'history Criterion Cargo-parser output'
+require_literal "$history_workflow" 'timeout-minutes: 30' '30-minute fast timeout'
+require_literal "$history_workflow" 'timeout-minutes: 180' '180-minute slow timeout'
+require_literal "$history_workflow" 'retention-days: 30' '30-day fast artifact retention'
+require_literal "$history_workflow" 'retention-days: 90' '90-day slow artifact retention'
+require_literal "$history_workflow" 'runner_image_os=${ImageOS:-unknown}' 'history runner image OS metadata'
+require_literal "$history_workflow" 'runner_image_version=${ImageVersion:-unknown}' 'history runner image version metadata'
+history_image_os_entries=$(grep -Fc 'runner_image_os=${ImageOS:-unknown}' "$history_workflow")
+history_image_version_entries=$(grep -Fc 'runner_image_version=${ImageVersion:-unknown}' "$history_workflow")
+[ "$history_image_os_entries" -eq 2 ] || fail "$history_workflow: fast and slow jobs must record runner image OS"
+[ "$history_image_version_entries" -eq 2 ] || fail "$history_workflow: fast and slow jobs must record runner image version"
+reject_text "$history_workflow" 'lighthouse_revision=[0-9a-f]{40}' 'hardcoded Lighthouse revision'
+require_literal "$history_workflow" 'benchmarks/comparison/Cargo.toml' 'history Lighthouse revision manifest source'
+require_literal "$history_workflow" "grep -Eq '^[0-9a-f]{40}$'" 'history Lighthouse revision validation'
+require_literal "$history_workflow" 'echo "lighthouse_revision=$lighthouse_revision"' 'history derived Lighthouse revision emission'
+history_manifest_reads=$(grep -Fc 'benchmarks/comparison/Cargo.toml' "$history_workflow")
+history_revision_emissions=$(grep -Fc 'echo "lighthouse_revision=$lighthouse_revision"' "$history_workflow")
+[ "$history_manifest_reads" -eq 2 ] || fail "$history_workflow: fast and slow jobs must derive the Lighthouse revision from the manifest"
+[ "$history_revision_emissions" -eq 2 ] || fail "$history_workflow: fast and slow jobs must emit their derived Lighthouse revision"
+require_literal "$history_workflow" "if: always() && vars.BENCHMARK_HISTORY_ENABLED == 'true'" 'always-evaluated publication gate'
+require_literal "$history_workflow" "needs.fast.result == 'success' || needs.slow.result == 'success'" 'successful measurement publication gate'
+require_literal "$history_workflow" "if: needs.fast.result == 'success'" 'conditional fast artifact handling'
+require_literal "$history_workflow" "if: needs.slow.result == 'success'" 'conditional slow artifact handling'
+require_literal "$history_workflow" 'benchmark-data-dir-path: dev/bench/fast' 'fast history path'
+require_literal "$history_workflow" 'benchmark-data-dir-path: dev/bench/slow' 'slow history path'
+require_literal "$history_workflow" 'auto-push: true' 'history auto-push'
+require_literal "$history_workflow" 'max-items-in-chart: 100' 'bounded history chart'
+require_literal "$history_workflow" 'github-token: ${{ github.token }}' 'scoped publication token'
+history_summaries=$(grep -Fc 'GITHUB_STEP_SUMMARY' "$history_workflow")
+[ "$history_summaries" -eq 2 ] || fail "$history_workflow: both measurement jobs must show current results"
+reject_text "$history_workflow" 'alert-threshold:' 'untested automated history threshold'
+require_text "$history_workflow" 'de0fac2e4500dabe0009e67214ff5f5447ce83dd' 'pinned history checkout action'
+require_text "$history_workflow" '35d8a35b823d6c20db516f5c35eb0a9640942c17' 'pinned history Rust toolchain action'
+require_text "$history_workflow" '401aff9a7a08acb9d27b64936a90db81024cff97' 'pinned history Rust cache action'
+require_text "$history_workflow" '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' 'pinned history artifact upload action'
+require_text "$history_workflow" '3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c' 'pinned history artifact download action'
+require_text "$history_workflow" '52576c92bccf6ac60c8223ec7eb2565637cae9ba' 'pinned history benchmark reporting action'
+check_full_action_pins "$history_workflow"
+
+measurement_jobs=$(sed '/^  publish:/,$d' "$history_workflow")
+if printf '%s\n' "$measurement_jobs" | grep -Eq 'write-all|:[[:space:]]*write([[:space:]]|$)'; then
+  fail "$history_workflow: measurement jobs must not have write permissions"
+fi
+publication_job=$(awk '
+  /^  publish:/ { in_publish = 1 }
+  in_publish && !/^  publish:/ && /^  [[:alnum:]_-]+:/ { in_publish = 0 }
+  in_publish { print }
+' "$history_workflow")
+[ -n "$publication_job" ] || fail "$history_workflow: missing publication job"
+printf '%s\n' "$publication_job" | grep -Eq '^    permissions:$' || fail "$history_workflow: publication job needs explicit permissions"
+printf '%s\n' "$publication_job" | grep -Eq '^      contents: write$' || fail "$history_workflow: publication job needs contents write"
+printf '%s\n' "$publication_job" | grep -Eq '^      deployments: write$' || fail "$history_workflow: publication job needs deployments write"
+if printf '%s\n' "$publication_job" | grep -Eq '^[[:space:]]+run:|scripts/|actions/checkout@'; then
+  fail "$history_workflow: publication job must not execute repository code"
+fi
+history_downloads=$(printf '%s\n' "$publication_job" | grep -Fc 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c')
+history_publishers=$(printf '%s\n' "$publication_job" | grep -Fc 'benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba')
+history_auto_pushes=$(printf '%s\n' "$publication_job" | grep -Fc 'auto-push: true')
+history_fast_conditions=$(printf '%s\n' "$publication_job" | grep -Fc "if: needs.fast.result == 'success'")
+history_slow_conditions=$(printf '%s\n' "$publication_job" | grep -Fc "if: needs.slow.result == 'success'")
+history_tokens=$(printf '%s\n' "$publication_job" | grep -Fc 'github-token: ${{ github.token }}')
+[ "$history_downloads" -eq 2 ] || fail "$history_workflow: publication must conditionally download both suites"
+[ "$history_publishers" -eq 2 ] || fail "$history_workflow: publication must publish both suites"
+[ "$history_auto_pushes" -eq 2 ] || fail "$history_workflow: both history suites must auto-push"
+[ "$history_fast_conditions" -eq 2 ] || fail "$history_workflow: fast download and publication must depend on fast success"
+[ "$history_slow_conditions" -eq 2 ] || fail "$history_workflow: slow download and publication must depend on slow success"
+[ "$history_tokens" -eq 2 ] || fail "$history_workflow: both history suites must use the scoped job token"
 
 require_file "$ci_workflow"
 if ! awk '
