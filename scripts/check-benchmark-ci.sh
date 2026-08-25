@@ -98,7 +98,7 @@ check_full_action_pins "$pr_workflow"
 require_text "$history_workflow" '^  push:$' 'push trigger'
 require_text "$history_workflow" '^      - main$' 'main branch restriction'
 require_text "$history_workflow" '^  schedule:$' 'weekly schedule trigger'
-require_literal "$history_workflow" "cron: '17 3 * * 1'" 'weekly schedule cadence'
+require_literal "$history_workflow" "cron: '17 3 * * *'" 'nightly schedule cadence'
 require_text "$history_workflow" '^  workflow_dispatch:$' 'manual trigger'
 reject_text "$history_workflow" 'pull_request|pull_request_target|workflow_run' 'untrusted publication trigger'
 reject_text "$history_workflow" 'benchmark-action|BENCHMARK_HISTORY_ENABLED|max-items-in-chart|benchmark-data-dir-path' 'historical reporting machinery'

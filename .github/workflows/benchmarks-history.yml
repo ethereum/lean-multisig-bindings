@@ -17,7 +17,7 @@ on:
       - Cargo.toml
       - rust-toolchain.toml
   schedule:
-    - cron: '17 3 * * 1'
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       suite:
