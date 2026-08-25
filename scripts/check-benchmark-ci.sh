@@ -179,9 +179,30 @@ publication_job=$(awk '
 printf '%s\n' "$publication_job" | grep -Eq '^    permissions:$' || fail "$history_workflow: publication job needs explicit permissions"
 printf '%s\n' "$publication_job" | grep -Eq '^      contents: write$' || fail "$history_workflow: publication job needs contents write"
 printf '%s\n' "$publication_job" | grep -Eq '^      deployments: write$' || fail "$history_workflow: publication job needs deployments write"
-if printf '%s\n' "$publication_job" | grep -Eq '^[[:space:]]+run:|scripts/|actions/checkout@'; then
+if printf '%s\n' "$publication_job" | grep -Eq '^[[:space:]]+run:|scripts/'; then
   fail "$history_workflow: publication job must not execute repository code"
 fi
+if printf '%s\n' "$publication_job" | grep -Eq '^[[:space:]]+ref:'; then
+  fail "$history_workflow: publication checkout must use the trusted event ref"
+fi
+publication_checkout_refs=$(printf '%s\n' "$publication_job" | grep -Fc 'actions/checkout@' || true)
+publication_checkouts=$(printf '%s\n' "$publication_job" | grep -Fc 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd' || true)
+[ "$publication_checkout_refs" -eq 1 ] || fail "$history_workflow: publication must contain exactly one checkout"
+[ "$publication_checkouts" -eq 1 ] || fail "$history_workflow: publication must initialize Git with one pinned checkout"
+publication_checkout_step=$(printf '%s\n' "$publication_job" | awk '
+  /uses: actions\/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd/ { in_checkout = 1 }
+  in_checkout && /^      - name:/ { exit }
+  in_checkout { print }
+')
+publication_credentials=$(printf '%s\n' "$publication_checkout_step" | grep -Fc 'persist-credentials: false' || true)
+publication_fetch_depth=$(printf '%s\n' "$publication_checkout_step" | grep -Fc 'fetch-depth: 1' || true)
+[ "$publication_credentials" -eq 1 ] || fail "$history_workflow: publication checkout must not persist credentials"
+[ "$publication_fetch_depth" -eq 1 ] || fail "$history_workflow: publication checkout must use minimal fetch depth"
+publication_checkout_line=$(printf '%s\n' "$publication_job" | grep -n -m 1 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd' | cut -d: -f1)
+publication_download_line=$(printf '%s\n' "$publication_job" | grep -n -m 1 'actions/download-artifact@' | cut -d: -f1)
+publication_reporter_line=$(printf '%s\n' "$publication_job" | grep -n -m 1 'benchmark-action/github-action-benchmark@' | cut -d: -f1)
+[ "$publication_checkout_line" -lt "$publication_download_line" ] || fail "$history_workflow: publication checkout must precede artifact downloads"
+[ "$publication_checkout_line" -lt "$publication_reporter_line" ] || fail "$history_workflow: publication checkout must precede benchmark reporters"
 history_downloads=$(printf '%s\n' "$publication_job" | grep -Fc 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c')
 history_publishers=$(printf '%s\n' "$publication_job" | grep -Fc 'benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba')
 history_auto_pushes=$(printf '%s\n' "$publication_job" | grep -Fc 'auto-push: true')

@@ -132,9 +132,11 @@ pull-request, or scheduled default.
 
 Measurement jobs are read-only. A separate publication job downloads only
 successful numeric artifacts and publishes fast and slow histories sequentially
-to `dev/bench/fast` and `dev/bench/slow`. It does not check out or execute the
-measured repository revision. Publication is disabled unless the repository
-variable `BENCHMARK_HISTORY_ENABLED` is exactly `true`.
+to `dev/bench/fast` and `dev/bench/slow`. It performs a shallow checkout of the
+trusted workflow revision, without persisting checkout credentials, solely to
+initialize the Git state required by the publisher. It never executes repository
+code. Publication is disabled unless the repository variable
+`BENCHMARK_HISTORY_ENABLED` is exactly `true`.
 
 ### One-time history setup
 
