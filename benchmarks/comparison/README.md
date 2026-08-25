@@ -119,7 +119,7 @@ sample count, size axes, and proof-warmup mode.
 The trusted benchmark workflow has three modes:
 
 - Relevant pushes to `main` run and retain the fast suite for 30 days.
-- A weekly Monday 03:17 UTC schedule runs the slow suite with three samples,
+- A nightly 03:17 UTC schedule runs the slow suite with three samples,
   sizes `1,8,16`, and proof warm-up; its artifacts are retained for 90 days.
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
   count (minimum 3) and independent same/distinct size lists. Manual slow runs
