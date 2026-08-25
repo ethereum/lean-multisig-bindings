@@ -79,6 +79,14 @@ fn distinct_fixtures_use_distinct_messages_and_slots() {
 }
 
 #[test]
+fn fixture_xmss_keys_have_exactly_the_supported_claim_slots() {
+    let fixtures = FixtureSet::same_claim(1).unwrap();
+    let last_slot = u32::try_from(MAX_DISTINCT_CLAIMS - 1).unwrap();
+
+    assert_eq!(fixtures.lean_keys()[0].slots(), 0..=last_slot);
+}
+
+#[test]
 fn fixtures_reject_empty_and_excessive_counts() {
     assert!(BlsFixtureSet::same_claim(0).is_err());
     assert!(BlsFixtureSet::distinct_claims(0).is_err());

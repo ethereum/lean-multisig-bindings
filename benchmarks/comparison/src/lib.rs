@@ -678,6 +678,12 @@ impl FixtureSet {
         let mut lean_keys = Vec::with_capacity(count);
         let mut lean_signatures = Vec::with_capacity(count);
         let mut lean_public_keys = Vec::with_capacity(count);
+        let last_slot = MAX_DISTINCT_CLAIMS
+            .checked_sub(1)
+            .context("the supported claim count must be nonzero")
+            .and_then(|slot| {
+                u32::try_from(slot).context("the supported claim slots must fit in u32")
+            })?;
 
         for index in 0..count {
             let message_index = if distinct_claims { index } else { 0 };
@@ -693,9 +699,8 @@ impl FixtureSet {
 
             let lean_seed = indexed_bytes(index)
                 .with_context(|| format!("failed to create XMSS seed for signer {index}"))?;
-            let lean_key =
-                lean_multisig::SecretKey::from_seed(lean_seed, 0..=MAX_DISTINCT_CLAIMS as u32)
-                    .with_context(|| format!("failed to create XMSS key for signer {index}"))?;
+            let lean_key = lean_multisig::SecretKey::from_seed(lean_seed, 0..=last_slot)
+                .with_context(|| format!("failed to create XMSS key for signer {index}"))?;
             let lean_public_key = lean_key.public_key();
             let lean_signature = lean_key
                 .sign(&claim)
