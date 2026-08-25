@@ -3,9 +3,192 @@
 //! This crate supports the repository's comparison benchmarks and is not a
 //! supported public API.
 
+use std::{
+    ffi::{OsStr, OsString},
+    path::PathBuf,
+    time::Duration,
+};
+
 use anyhow::{anyhow, ensure, Context, Result};
+use serde::{Deserialize, Serialize};
 
 pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SampleSummary {
+    pub samples_ns: Vec<u64>,
+    pub median_ns: u64,
+    pub operations_per_second: f64,
+}
+
+impl SampleSummary {
+    pub fn from_durations(durations: impl IntoIterator<Item = Duration>) -> Result<Self> {
+        let samples_ns = durations
+            .into_iter()
+            .map(|duration| {
+                u64::try_from(duration.as_nanos())
+                    .context("sample duration exceeds the supported nanosecond range")
+            })
+            .collect::<Result<Vec<_>>>()?;
+        ensure!(!samples_ns.is_empty(), "at least one sample is required");
+        ensure!(
+            samples_ns.iter().all(|sample| *sample > 0),
+            "sample durations must be greater than zero"
+        );
+
+        let mut sorted = samples_ns.clone();
+        sorted.sort_unstable();
+        let midpoint = sorted.len() / 2;
+        let median_ns = if sorted.len() % 2 == 0 {
+            let lower = sorted[midpoint - 1];
+            let upper = sorted[midpoint];
+            lower / 2 + upper / 2 + (lower % 2 + upper % 2) / 2
+        } else {
+            sorted[midpoint]
+        };
+
+        Ok(Self {
+            samples_ns,
+            median_ns,
+            operations_per_second: 1_000_000_000.0 / median_ns as f64,
+        })
+    }
+
+    pub fn ratio_to(&self, baseline: &Self) -> Result<f64> {
+        ensure!(
+            baseline.median_ns > 0,
+            "baseline median must be greater than zero"
+        );
+        Ok(self.median_ns as f64 / baseline.median_ns as f64)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ComparisonReport {
+    pub workload: String,
+    pub input_size: usize,
+    pub lean: SampleSummary,
+    pub lighthouse: SampleSummary,
+    pub lean_over_lighthouse: f64,
+    pub lean_artifact_bytes: usize,
+    pub lighthouse_artifact_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SupplementalReport {
+    pub workload: String,
+    pub input_size: usize,
+    pub lighthouse: SampleSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BenchmarkReport {
+    pub lighthouse_revision: String,
+    pub samples: usize,
+    pub comparisons: Vec<ComparisonReport>,
+    pub supplemental: Vec<SupplementalReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunConfig {
+    pub samples: usize,
+    pub sizes: Vec<usize>,
+    pub json_path: Option<PathBuf>,
+}
+
+impl RunConfig {
+    pub fn parse_from<I, T>(arguments: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<OsString>,
+    {
+        let mut arguments = arguments.into_iter().map(Into::into);
+        arguments.next().context("missing program name")?;
+
+        let mut samples = None;
+        let mut sizes = None;
+        let mut json_path = None;
+
+        while let Some(argument) = arguments.next() {
+            match argument.as_os_str() {
+                argument if argument == OsStr::new("--samples") => {
+                    ensure!(samples.is_none(), "--samples may only be supplied once");
+                    let value = option_value("--samples", arguments.next())?;
+                    let text = value
+                        .to_str()
+                        .context("--samples value must be valid UTF-8")?;
+                    let parsed = text
+                        .parse::<usize>()
+                        .with_context(|| format!("invalid --samples value `{text}`"))?;
+                    ensure!(parsed > 0, "--samples must be greater than zero");
+                    samples = Some(parsed);
+                }
+                argument if argument == OsStr::new("--sizes") => {
+                    ensure!(sizes.is_none(), "--sizes may only be supplied once");
+                    let value = option_value("--sizes", arguments.next())?;
+                    let text = value
+                        .to_str()
+                        .context("--sizes value must be valid UTF-8")?;
+                    sizes = Some(parse_sizes(text)?);
+                }
+                argument if argument == OsStr::new("--json") => {
+                    ensure!(json_path.is_none(), "--json may only be supplied once");
+                    let value = option_value("--json", arguments.next())?;
+                    ensure!(!value.is_empty(), "--json path must not be empty");
+                    json_path = Some(PathBuf::from(value));
+                }
+                _ => {
+                    return Err(anyhow!(
+                        "unknown argument `{}`; expected --samples, --sizes, or --json",
+                        argument.to_string_lossy()
+                    ));
+                }
+            }
+        }
+
+        Ok(Self {
+            samples: samples.unwrap_or(3),
+            sizes: sizes.unwrap_or_else(|| vec![1, 8, 16]),
+            json_path,
+        })
+    }
+}
+
+fn option_value(option: &str, value: Option<OsString>) -> Result<OsString> {
+    let value = value.with_context(|| format!("{option} requires a value"))?;
+    ensure!(
+        !value.to_string_lossy().starts_with("--"),
+        "{option} requires a value"
+    );
+    Ok(value)
+}
+
+fn parse_sizes(value: &str) -> Result<Vec<usize>> {
+    ensure!(!value.is_empty(), "--sizes requires a comma-separated list");
+
+    let mut sizes = Vec::new();
+    for component in value.split(',') {
+        ensure!(
+            !component.is_empty(),
+            "--sizes contains an empty list entry"
+        );
+        let size = component
+            .parse::<usize>()
+            .with_context(|| format!("invalid --sizes entry `{component}`"))?;
+        ensure!(size > 0, "--sizes entries must be greater than zero");
+        ensure!(
+            size <= MAX_DISTINCT_CLAIMS,
+            "--sizes entry {size} exceeds maximum {MAX_DISTINCT_CLAIMS}"
+        );
+        ensure!(
+            !sizes.contains(&size),
+            "--sizes contains duplicate entry {size}"
+        );
+        sizes.push(size);
+    }
+
+    Ok(sizes)
+}
 
 pub struct FixtureSet {
     lean_claims: Vec<lean_multisig::Claim>,
