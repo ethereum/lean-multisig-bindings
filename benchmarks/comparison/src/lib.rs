@@ -382,12 +382,7 @@ impl RunConfig {
             );
         }
 
-        if let (Some(json_path), Some(action_json_path)) = (&json_path, &action_json_path) {
-            ensure!(
-                !output_paths_collide(json_path, action_json_path)?,
-                "--json and --action-json must write to different paths"
-            );
-        }
+        ensure_distinct_output_paths(json_path.as_deref(), action_json_path.as_deref())?;
 
         let default_sizes = || vec![1, 8, 16];
         let (same_sizes, distinct_sizes) = if let Some(sizes) = sizes {
@@ -409,10 +404,38 @@ impl RunConfig {
     }
 }
 
+/// Rejects full and action report paths that currently resolve to the same file.
+pub fn ensure_distinct_output_paths(
+    json_path: Option<&Path>,
+    action_json_path: Option<&Path>,
+) -> Result<()> {
+    if let (Some(json_path), Some(action_json_path)) = (json_path, action_json_path) {
+        ensure!(
+            !output_paths_collide(json_path, action_json_path)?,
+            "--json and --action-json must write to different paths"
+        );
+    }
+    Ok(())
+}
+
 fn output_paths_collide(left: &Path, right: &Path) -> Result<bool> {
     let left = lexically_normalize_absolute(left)?;
     let right = lexically_normalize_absolute(right)?;
-    Ok(left == right)
+    if left == right {
+        return Ok(true);
+    }
+
+    match same_file::is_same_file(&left, &right) {
+        Ok(same) => Ok(same),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| {
+            format!(
+                "failed to compare output path identity for {} and {}",
+                left.display(),
+                right.display()
+            )
+        }),
+    }
 }
 
 fn lexically_normalize_absolute(path: &Path) -> Result<PathBuf> {

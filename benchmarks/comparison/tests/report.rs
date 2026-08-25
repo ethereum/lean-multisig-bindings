@@ -1,5 +1,13 @@
 use std::time::Duration;
 
+#[cfg(unix)]
+use std::{
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+};
+
 use lean_multisig_comparison::{
     BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
     LIGHTHOUSE_REVISION, MAX_SAME_CLAIM_SIGNERS,
@@ -205,6 +213,97 @@ fn config_rejects_lexically_equivalent_output_paths() {
             error.to_string(),
             "--json and --action-json must write to different paths"
         );
+    }
+}
+
+#[test]
+fn config_accepts_distinct_nonexistent_output_paths() {
+    let config = RunConfig::parse_from([
+        "slow-comparison",
+        "--json",
+        "reports/full.json",
+        "--action-json",
+        "reports/action.json",
+    ])
+    .unwrap();
+
+    assert_eq!(
+        config.json_path.unwrap().to_str(),
+        Some("reports/full.json")
+    );
+    assert_eq!(
+        config.action_json_path.unwrap().to_str(),
+        Some("reports/action.json")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn config_rejects_existing_symlink_output_aliases() {
+    use std::os::unix::fs::symlink;
+
+    let directory = TestDirectory::new("symlink");
+    let full = directory.path().join("full.json");
+    let action = directory.path().join("action.json");
+    fs::write(&full, "existing report").unwrap();
+    symlink(&full, &action).unwrap();
+
+    assert_output_path_collision(&full, &action);
+}
+
+#[cfg(unix)]
+#[test]
+fn config_rejects_existing_hard_link_output_aliases() {
+    let directory = TestDirectory::new("hard-link");
+    let full = directory.path().join("full.json");
+    let action = directory.path().join("action.json");
+    fs::write(&full, "existing report").unwrap();
+    fs::hard_link(&full, &action).unwrap();
+
+    assert_output_path_collision(&full, &action);
+}
+
+#[cfg(unix)]
+fn assert_output_path_collision(full: &Path, action: &Path) {
+    let result = RunConfig::parse_from([
+        OsString::from("slow-comparison"),
+        OsString::from("--json"),
+        full.as_os_str().to_owned(),
+        OsString::from("--action-json"),
+        action.as_os_str().to_owned(),
+    ]);
+
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "--json and --action-json must write to different paths"
+    );
+}
+
+#[cfg(unix)]
+struct TestDirectory(PathBuf);
+
+#[cfg(unix)]
+impl TestDirectory {
+    fn new(label: &str) -> Self {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "lean-multisig-comparison-{label}-{}-{id}",
+            std::process::id()
+        ));
+        fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        fs::remove_dir_all(&self.0).unwrap();
     }
 }
 

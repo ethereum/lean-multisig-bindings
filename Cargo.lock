@@ -1796,6 +1796,7 @@ dependencies = [
  "bls",
  "criterion",
  "lean-multisig",
+ "same-file",
  "serde",
  "serde_json",
 ]

@@ -6,8 +6,8 @@ use std::{
 
 use anyhow::{bail, ensure, Context, Result};
 use lean_multisig_comparison::{
-    BenchmarkReport, ComparisonReport, FixtureSet, RunConfig, SampleSummary, SupplementalReport,
-    LIGHTHOUSE_REVISION,
+    ensure_distinct_output_paths, BenchmarkReport, ComparisonReport, FixtureSet, RunConfig,
+    SampleSummary, SupplementalReport, LIGHTHOUSE_REVISION,
 };
 
 const SEMANTIC_WARNING: &str = "WARNING: leanMultisig aggregation generates zkVM proofs, while Lighthouse BLS aggregation combines elliptic-curve points; these operations do not have identical security semantics.";
@@ -119,6 +119,10 @@ fn run(config: RunConfig) -> Result<()> {
     println!();
     println!("{}", report.to_table());
 
+    write_report_files(&report, &config)
+}
+
+fn write_report_files(report: &BenchmarkReport, config: &RunConfig) -> Result<()> {
     if let Some(path) = config.json_path.as_ref() {
         let json = serde_json::to_string_pretty(&report)
             .context("failed to serialize benchmark report as JSON")?;
@@ -132,6 +136,10 @@ fn run(config: RunConfig) -> Result<()> {
             .context("failed to convert benchmark report to action JSON")?;
         let json = serde_json::to_string_pretty(&action_benchmarks)
             .context("failed to serialize benchmark action JSON")?;
+        ensure_distinct_output_paths(
+            config.json_path.as_deref(),
+            config.action_json_path.as_deref(),
+        )?;
         fs::write(path, json)
             .with_context(|| format!("failed to write action JSON report to {}", path.display()))?;
     }
@@ -715,6 +723,13 @@ fn summarize(
 mod tests {
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
+    #[cfg(unix)]
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
     use super::*;
 
     #[test]
@@ -894,5 +909,72 @@ mod tests {
         assert!(DISTINCT_VERIFY_NOTE.contains("EF-test"));
         assert!(DISTINCT_VERIFY_NOTE.contains("non-production"));
         assert!(DISTINCT_VERIFY_NOTE.contains(LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn report_write_rechecks_a_dangling_symlink_before_action_output() {
+        use std::os::unix::fs::symlink;
+
+        let directory = TestDirectory::new("dangling-symlink");
+        let full = directory.path().join("full.json");
+        let action = directory.path().join("action.json");
+        symlink("full.json", &action).unwrap();
+        let config = RunConfig::parse_from([
+            "slow-comparison",
+            "--json",
+            full.to_str().unwrap(),
+            "--action-json",
+            action.to_str().unwrap(),
+        ])
+        .unwrap();
+        let lighthouse = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
+        let report = BenchmarkReport {
+            lighthouse_revision: LIGHTHOUSE_REVISION.to_owned(),
+            samples: 1,
+            proof_warmup: false,
+            comparisons: vec![],
+            supplemental: vec![SupplementalReport {
+                workload: LIGHTHOUSE_SIGNATURE_SETS_WORKLOAD.to_owned(),
+                input_size: 1,
+                lighthouse,
+            }],
+        };
+
+        let error = write_report_files(&report, &config).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("--json and --action-json must write to different paths"));
+        let preserved: BenchmarkReport = serde_json::from_slice(&fs::read(&full).unwrap()).unwrap();
+        assert_eq!(preserved, report);
+    }
+
+    #[cfg(unix)]
+    struct TestDirectory(PathBuf);
+
+    #[cfg(unix)]
+    impl TestDirectory {
+        fn new(label: &str) -> Self {
+            static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "lean-multisig-comparison-runner-{label}-{}-{id}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.0).unwrap();
+        }
     }
 }
