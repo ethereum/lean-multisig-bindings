@@ -4,6 +4,7 @@
 //! supported public API.
 
 use std::{
+    borrow::Cow,
     ffi::{OsStr, OsString},
     path::PathBuf,
     time::Duration,
@@ -13,6 +14,11 @@ use anyhow::{anyhow, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
+
+/// Returns deterministic, nonzero 32-byte key material for a fixture signer.
+pub fn deterministic_key_material(index: usize) -> Result<[u8; 32]> {
+    indexed_bytes(index)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SampleSummary {
@@ -331,6 +337,49 @@ impl FixtureSet {
     #[must_use]
     pub fn bls_public_keys(&self) -> &[lighthouse_bls::PublicKey] {
         &self.bls_public_keys
+    }
+
+    #[must_use]
+    pub fn bls_aggregate(&self) -> lighthouse_bls::AggregateSignature {
+        let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
+        for signature in &self.bls_signatures {
+            aggregate.add_assign(signature);
+        }
+        aggregate
+    }
+
+    #[must_use]
+    pub fn verify_bls_same_claim_aggregate(
+        &self,
+        aggregate: &lighthouse_bls::AggregateSignature,
+    ) -> bool {
+        let public_keys = self.bls_public_keys.iter().collect::<Vec<_>>();
+        aggregate.fast_aggregate_verify(self.bls_messages[0], &public_keys)
+    }
+
+    #[must_use]
+    pub fn verify_bls_distinct_claim_aggregate(
+        &self,
+        aggregate: &lighthouse_bls::AggregateSignature,
+    ) -> bool {
+        let public_keys = self.bls_public_keys.iter().collect::<Vec<_>>();
+        aggregate.aggregate_verify(&self.bls_messages, &public_keys)
+    }
+
+    #[must_use]
+    pub fn bls_signature_sets(&self) -> Vec<lighthouse_bls::SignatureSet<'_>> {
+        self.bls_signatures
+            .iter()
+            .zip(&self.bls_public_keys)
+            .zip(&self.bls_messages)
+            .map(|((signature, public_key), message)| {
+                lighthouse_bls::SignatureSet::single_pubkey(
+                    signature,
+                    Cow::Borrowed(public_key),
+                    *message,
+                )
+            })
+            .collect()
     }
 
     pub fn validate_raw(&self) -> Result<()> {

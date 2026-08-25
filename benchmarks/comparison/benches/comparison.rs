@@ -1,3 +1,293 @@
-//! Placeholder for the Criterion comparison harness added in Task 4.
+use std::hint::black_box;
 
-fn main() {}
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use lean_multisig_comparison::{deterministic_key_material, FixtureSet, MAX_DISTINCT_CLAIMS};
+
+const SIZES: [usize; 3] = [1, 8, 16];
+
+fn aggregate_bls(signatures: &[lighthouse_bls::Signature]) -> lighthouse_bls::AggregateSignature {
+    let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
+    for signature in signatures {
+        aggregate.add_assign(signature);
+    }
+    aggregate
+}
+
+fn single_operations(criterion: &mut Criterion) {
+    let key_material = deterministic_key_material(0).expect("fixture key material should be valid");
+    let fixtures = FixtureSet::same_claim(1).expect("single-signer fixture should be valid");
+    let lean_claim = &fixtures.lean_claims()[0];
+    let lean_key = &fixtures.lean_keys()[0];
+    let lean_signature = &fixtures.lean_signatures()[0];
+    let lean_public_key = &fixtures.lean_public_keys()[0];
+    let bls_message = fixtures.bls_messages()[0];
+    let bls_key = &fixtures.bls_keys()[0];
+    let bls_signature = &fixtures.bls_signatures()[0];
+    let bls_public_key = &fixtures.bls_public_keys()[0];
+
+    assert!(lean_multisig::verify(
+        lean_signature,
+        std::slice::from_ref(lean_public_key),
+        lean_claim,
+    )
+    .is_ok());
+    assert!(bls_signature.verify(bls_public_key, bls_message));
+
+    let mut group = criterion.benchmark_group("key_creation");
+    group.bench_function("lean", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                lean_multisig::SecretKey::from_seed(
+                    black_box(key_material),
+                    0..=MAX_DISTINCT_CLAIMS as u32,
+                )
+                .expect("deterministic XMSS key construction should succeed"),
+            )
+        });
+    });
+    group.bench_function("lighthouse", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                lighthouse_bls::SecretKey::deserialize(black_box(&key_material))
+                    .expect("deterministic BLS key construction should succeed"),
+            )
+        });
+    });
+    group.finish();
+
+    let mut group = criterion.benchmark_group("public_key");
+    group.bench_function("lean", |bencher| {
+        bencher.iter(|| black_box(black_box(lean_key).public_key()));
+    });
+    group.bench_function("lighthouse", |bencher| {
+        bencher.iter(|| black_box(black_box(bls_key).public_key()));
+    });
+    group.finish();
+
+    let mut group = criterion.benchmark_group("sign");
+    group.bench_function("lean", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                black_box(lean_key)
+                    .sign(black_box(lean_claim))
+                    .expect("fixture XMSS signing should succeed"),
+            )
+        });
+    });
+    group.bench_function("lighthouse", |bencher| {
+        bencher.iter(|| black_box(black_box(bls_key).sign(black_box(bls_message))));
+    });
+    group.finish();
+
+    let lean_signature_bytes = lean_signature.to_bytes();
+    let bls_signature_bytes = bls_signature.serialize();
+    let decoded_lean_signature = lean_multisig::Signature::from_bytes(
+        &lean_signature_bytes,
+        lean_claim,
+        std::slice::from_ref(lean_public_key),
+    )
+    .expect("fixture XMSS signature deserialization should succeed");
+    let decoded_bls_signature = lighthouse_bls::Signature::deserialize(&bls_signature_bytes)
+        .expect("fixture BLS signature deserialization should succeed");
+    assert!(lean_multisig::verify(
+        &decoded_lean_signature,
+        std::slice::from_ref(lean_public_key),
+        lean_claim,
+    )
+    .is_ok());
+    assert!(decoded_bls_signature.verify(bls_public_key, bls_message));
+
+    let mut group = criterion.benchmark_group("raw_signature_serialize");
+    group.bench_function("lean", |bencher| {
+        bencher.iter(|| black_box(black_box(lean_signature).to_bytes()));
+    });
+    group.bench_function("lighthouse", |bencher| {
+        bencher.iter(|| black_box(black_box(bls_signature).serialize()));
+    });
+    group.finish();
+
+    let mut group = criterion.benchmark_group("raw_signature_deserialize");
+    group.bench_function("lean", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                lean_multisig::Signature::from_bytes(
+                    black_box(&lean_signature_bytes),
+                    black_box(lean_claim),
+                    black_box(std::slice::from_ref(lean_public_key)),
+                )
+                .expect("fixture XMSS signature deserialization should succeed"),
+            )
+        });
+    });
+    group.bench_function("lighthouse", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                lighthouse_bls::Signature::deserialize(black_box(&bls_signature_bytes))
+                    .expect("fixture BLS signature deserialization should succeed"),
+            )
+        });
+    });
+    group.finish();
+
+    let mut group = criterion.benchmark_group("single_verify");
+    group.bench_function("lean", |bencher| {
+        bencher.iter(|| {
+            black_box(lean_multisig::verify(
+                black_box(lean_signature),
+                black_box(std::slice::from_ref(lean_public_key)),
+                black_box(lean_claim),
+            ))
+        });
+    });
+    group.bench_function("lighthouse", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                black_box(bls_signature).verify(black_box(bls_public_key), black_box(bls_message)),
+            )
+        });
+    });
+    group.finish();
+}
+
+fn lighthouse_same_claim_aggregate(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("lighthouse_same_claim_aggregate");
+    for size in SIZES {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size),
+            &size,
+            |bencher, &size| {
+                let fixtures =
+                    FixtureSet::same_claim(size).expect("same-claim fixture should be valid");
+                let signatures = fixtures.bls_signatures();
+                let aggregate = aggregate_bls(signatures);
+                assert!(fixtures.verify_bls_same_claim_aggregate(&aggregate));
+
+                bencher.iter(|| {
+                    let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
+                    for signature in black_box(signatures) {
+                        aggregate.add_assign(black_box(signature));
+                    }
+                    black_box(aggregate)
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
+fn lighthouse_same_claim_verify(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("lighthouse_same_claim_verify");
+    for size in SIZES {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size),
+            &size,
+            |bencher, &size| {
+                let fixtures =
+                    FixtureSet::same_claim(size).expect("same-claim fixture should be valid");
+                let aggregate = fixtures.bls_aggregate();
+                let message = fixtures.bls_messages()[0];
+                let public_keys = fixtures.bls_public_keys().iter().collect::<Vec<_>>();
+                assert!(aggregate.fast_aggregate_verify(message, &public_keys));
+
+                bencher.iter(|| {
+                    black_box(
+                        black_box(&aggregate)
+                            .fast_aggregate_verify(black_box(message), black_box(&public_keys)),
+                    )
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
+fn lighthouse_distinct_claim_aggregate(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("lighthouse_distinct_claim_aggregate");
+    for size in SIZES {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size),
+            &size,
+            |bencher, &size| {
+                let fixtures = FixtureSet::distinct_claims(size)
+                    .expect("distinct-claim fixture should be valid");
+                let signatures = fixtures.bls_signatures();
+                let aggregate = aggregate_bls(signatures);
+                assert!(fixtures.verify_bls_distinct_claim_aggregate(&aggregate));
+
+                bencher.iter(|| {
+                    let mut aggregate = lighthouse_bls::AggregateSignature::infinity();
+                    for signature in black_box(signatures) {
+                        aggregate.add_assign(black_box(signature));
+                    }
+                    black_box(aggregate)
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
+fn lighthouse_distinct_claim_verify(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("lighthouse_distinct_claim_verify");
+    for size in SIZES {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size),
+            &size,
+            |bencher, &size| {
+                let fixtures = FixtureSet::distinct_claims(size)
+                    .expect("distinct-claim fixture should be valid");
+                let aggregate = fixtures.bls_aggregate();
+                let messages = fixtures.bls_messages();
+                let public_keys = fixtures.bls_public_keys().iter().collect::<Vec<_>>();
+                assert!(aggregate.aggregate_verify(messages, &public_keys));
+
+                bencher.iter(|| {
+                    black_box(
+                        black_box(&aggregate)
+                            .aggregate_verify(black_box(messages), black_box(&public_keys)),
+                    )
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
+fn lighthouse_signature_sets_verify(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("lighthouse_signature_sets_verify");
+    for size in SIZES {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(size),
+            &size,
+            |bencher, &size| {
+                let fixtures = FixtureSet::distinct_claims(size)
+                    .expect("distinct-claim fixture should be valid");
+                let signature_sets = fixtures.bls_signature_sets();
+                assert!(lighthouse_bls::verify_signature_sets(signature_sets.iter()));
+
+                bencher.iter(|| {
+                    black_box(lighthouse_bls::verify_signature_sets(black_box(
+                        signature_sets.iter(),
+                    )))
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    single_operations,
+    lighthouse_same_claim_aggregate,
+    lighthouse_same_claim_verify,
+    lighthouse_distinct_claim_aggregate,
+    lighthouse_distinct_claim_verify,
+    lighthouse_signature_sets_verify,
+);
+criterion_main!(benches);
