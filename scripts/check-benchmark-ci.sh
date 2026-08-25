@@ -28,6 +28,65 @@ reject_text() {
   fi
 }
 
+check_github_expressions() {
+  file=$1
+  expression_error=$(awk '
+    function contains_top_level_secrets(expression, rest, position, before, after) {
+      rest = expression
+      while ((position = index(rest, "secrets")) != 0) {
+        before = position == 1 ? "" : substr(rest, position - 1, 1)
+        after = substr(rest, position + 7, 1)
+        if ((before == "" || before !~ /[[:alnum:]_.]/) &&
+            (after == "" || after !~ /[[:alnum:]_]/)) {
+          return 1
+        }
+        rest = substr(rest, position + 7)
+      }
+      return 0
+    }
+
+    {
+      rest = $0
+      while (1) {
+        if (!collecting) {
+          start = index(rest, "${{")
+          if (start == 0) {
+            break
+          }
+          rest = substr(rest, start + 3)
+          expression = ""
+          collecting = 1
+        }
+
+        finish = index(rest, "}}")
+        if (finish == 0) {
+          expression = expression " " rest
+          break
+        }
+
+        expression = expression " " substr(rest, 1, finish - 1)
+        if (contains_top_level_secrets(expression)) {
+          forbidden = 1
+        }
+        rest = substr(rest, finish + 2)
+        expression = ""
+        collecting = 0
+      }
+    }
+
+    END {
+      if (collecting) {
+        print "contains an unclosed GitHub expression"
+        exit 1
+      }
+      if (forbidden) {
+        print "contains forbidden secret access"
+        exit 1
+      }
+    }
+  ' "$file") || fail "$file: $expression_error"
+}
+
 check_full_action_pins() {
   file=$1
   uses_lines=$(grep -E '^[[:space:]]*-?[[:space:]]*uses:' "$file" || true)
@@ -40,7 +99,8 @@ require_file "$pr_workflow"
 require_text "$pr_workflow" '^  pull_request:$' 'pull_request trigger'
 reject_text "$pr_workflow" 'pull_request_target|workflow_run' 'privileged PR trigger'
 reject_text "$pr_workflow" 'write-all|:[[:space:]]*write([[:space:]]|$)' 'write permission'
-reject_text "$pr_workflow" 'secrets:|\$\{\{[[:space:]]*secrets([^[:alnum:]_]|$)|\$\{\{[^}]*[^[:alnum:]_]secrets([^[:alnum:]_]|$)' 'secret access'
+reject_text "$pr_workflow" 'secrets:' 'secret declaration'
+check_github_expressions "$pr_workflow"
 reject_text "$pr_workflow" 'continue-on-error:' 'suppressed action failure'
 require_text "$pr_workflow" '^permissions:$' 'top-level permissions block'
 require_text "$pr_workflow" '^  contents: read$' 'read-only contents permission'
