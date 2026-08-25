@@ -1,0 +1,163 @@
+name: Benchmark pull request
+
+on:
+  pull_request:
+    paths:
+      - .cargo/**
+      - .github/workflows/benchmarks-pr.yml
+      - .github/workflows/benchmarks-history.yml
+      - benchmarks/comparison/**
+      - bindings/rust/**
+      - leanVM/**
+      - scripts/check-benchmark-ci.sh
+      - Cargo.lock
+      - Cargo.toml
+      - rust-toolchain.toml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: Fast comparison benchmarks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install Rust 1.94.0
+        uses: dtolnay/rust-toolchain@35d8a35b823d6c20db516f5c35eb0a9640942c17
+        with:
+          toolchain: 1.94.0
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@401aff9a7a08acb9d27b64936a90db81024cff97
+
+      - name: Record benchmark environment
+        shell: bash
+        run: |
+          mkdir -p benchmark-artifacts/fast
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "runner_image=${ImageOS:-unknown}"
+            echo "kernel=$(uname -srvmo)"
+            echo "lighthouse_revision=e423a66763bb1bd780492d635123f208d80c3538"
+            echo "suite=fast"
+            echo "samples=criterion-default"
+            echo "same_sizes=1,8,16,32,64,128,256,512"
+            echo "distinct_sizes=1,8,16"
+            echo "proof_warmup=not-applicable"
+            echo
+            rustc -Vv
+            cargo -V
+            lscpu
+          } > benchmark-artifacts/fast/environment.txt
+
+      - name: Run fast Criterion benchmarks
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo bench -p lean-multisig-comparison --bench comparison -- --noplot 2>&1 \
+            | tee benchmark-artifacts/fast/criterion-output.txt
+
+      - name: Upload fast benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: benchmark-pr-fast-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: |
+            benchmark-artifacts/fast/
+            target/criterion/**/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Add fast benchmark summary
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
+        with:
+          name: Lighthouse comparison (fast)
+          tool: cargo
+          output-file-path: benchmark-artifacts/fast/criterion-output.txt
+          benchmark-data-dir-path: dev/bench/fast
+          skip-fetch-gh-pages: ${{ vars.BENCHMARK_HISTORY_ENABLED != 'true' }}
+          save-data-file: false
+          summary-always: true
+          alert-threshold: 150%
+          fail-on-alert: false
+
+  slow:
+    name: Slow proof comparison benchmarks
+    if: contains(github.event.pull_request.labels.*.name, 'benchmark-slow')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install Rust 1.94.0
+        uses: dtolnay/rust-toolchain@35d8a35b823d6c20db516f5c35eb0a9640942c17
+        with:
+          toolchain: 1.94.0
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@401aff9a7a08acb9d27b64936a90db81024cff97
+
+      - name: Record benchmark environment
+        shell: bash
+        run: |
+          mkdir -p benchmark-artifacts/slow
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "runner_image=${ImageOS:-unknown}"
+            echo "kernel=$(uname -srvmo)"
+            echo "lighthouse_revision=e423a66763bb1bd780492d635123f208d80c3538"
+            echo "suite=slow"
+            echo "samples=3"
+            echo "same_sizes=1,8,16"
+            echo "distinct_sizes=1,8,16"
+            echo "proof_warmup=enabled"
+            echo
+            rustc -Vv
+            cargo -V
+            lscpu
+          } > benchmark-artifacts/slow/environment.txt
+
+      - name: Run slow proof benchmarks
+        run: |
+          cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
+            --samples 3 \
+            --same-sizes 1,8,16 \
+            --distinct-sizes 1,8,16 \
+            --warmup-proofs \
+            --json benchmark-artifacts/slow/full.json \
+            --action-json benchmark-artifacts/slow/action.json
+
+      - name: Upload slow benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: benchmark-pr-slow-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: benchmark-artifacts/slow/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Add slow benchmark summary
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
+        with:
+          name: Lighthouse comparison (slow)
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-artifacts/slow/action.json
+          benchmark-data-dir-path: dev/bench/slow
+          skip-fetch-gh-pages: ${{ vars.BENCHMARK_HISTORY_ENABLED != 'true' }}
+          save-data-file: false
+          summary-always: true
+          alert-threshold: 200%
+          fail-on-alert: false
