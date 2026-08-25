@@ -298,7 +298,7 @@ git commit -m "feat: add benchmark report model"
 ### Task 4: Add Criterion fast-operation comparisons
 
 **Files:**
-- Create: `benchmarks/comparison/benches/comparison.rs`
+- Modify: `benchmarks/comparison/benches/comparison.rs` (replace the scaffold placeholder)
 - Modify: `benchmarks/comparison/src/lib.rs`
 
 **Step 1: Expose only the fixture operations needed by benchmarks**
