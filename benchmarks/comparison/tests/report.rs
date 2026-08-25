@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use lean_multisig_comparison::{
     BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
+    MAX_DISTINCT_CLAIMS,
 };
 
 #[test]
@@ -31,6 +32,67 @@ fn summary_ratio_uses_integer_medians() {
     let lighthouse = SampleSummary::from_durations([Duration::from_millis(10)]).unwrap();
 
     assert_eq!(lean.ratio_to(&lighthouse).unwrap(), 3.0);
+}
+
+#[test]
+fn comparison_report_calculates_ratio_from_medians() {
+    let lean = SampleSummary::from_durations([Duration::from_millis(30)]).unwrap();
+    let lighthouse = SampleSummary::from_durations([Duration::from_millis(10)]).unwrap();
+
+    let report =
+        ComparisonReport::new("same_claim_aggregate", 8, lean, lighthouse, 1_024, 96).unwrap();
+
+    assert_eq!(report.lean_over_lighthouse, 3.0);
+}
+
+#[test]
+fn comparison_report_rejects_zero_lighthouse_median() {
+    let lean = SampleSummary::from_durations([Duration::from_millis(30)]).unwrap();
+    let lighthouse = SampleSummary {
+        samples_ns: vec![0],
+        median_ns: 0,
+        operations_per_second: f64::INFINITY,
+    };
+
+    assert!(
+        ComparisonReport::new("same_claim_aggregate", 8, lean, lighthouse, 1_024, 96,).is_err()
+    );
+}
+
+#[test]
+fn comparison_report_rejects_zero_sizes() {
+    let summary = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
+
+    assert!(ComparisonReport::new(
+        "same_claim_aggregate",
+        0,
+        summary.clone(),
+        summary.clone(),
+        1,
+        1,
+    )
+    .is_err());
+    assert!(ComparisonReport::new(
+        "same_claim_aggregate",
+        MAX_DISTINCT_CLAIMS + 1,
+        summary.clone(),
+        summary.clone(),
+        1,
+        1,
+    )
+    .is_err());
+    assert!(ComparisonReport::new(
+        "same_claim_aggregate",
+        1,
+        summary.clone(),
+        summary.clone(),
+        0,
+        1,
+    )
+    .is_err());
+    assert!(
+        ComparisonReport::new("same_claim_aggregate", 1, summary.clone(), summary, 1, 0,).is_err()
+    );
 }
 
 #[test]
@@ -101,15 +163,15 @@ fn benchmark_report_round_trips_through_json() {
     let report = BenchmarkReport {
         lighthouse_revision: "e423a66763bb1bd780492d635123f208d80c3538".to_owned(),
         samples: 1,
-        comparisons: vec![ComparisonReport {
-            workload: "same_claim_aggregate".to_owned(),
-            input_size: 8,
-            lean_over_lighthouse: lean.ratio_to(&lighthouse).unwrap(),
+        comparisons: vec![ComparisonReport::new(
+            "same_claim_aggregate",
+            8,
             lean,
-            lighthouse: lighthouse.clone(),
-            lean_artifact_bytes: 1_024,
-            lighthouse_artifact_bytes: 96,
-        }],
+            lighthouse.clone(),
+            1_024,
+            96,
+        )
+        .unwrap()],
         supplemental: vec![SupplementalReport {
             workload: "verify_signature_sets".to_owned(),
             input_size: 8,
@@ -121,4 +183,57 @@ fn benchmark_report_round_trips_through_json() {
     let restored: BenchmarkReport = serde_json::from_str(&json).unwrap();
 
     assert_eq!(restored, report);
+}
+
+#[test]
+fn table_contains_paired_measurements_and_artifact_sizes() {
+    let lean = SampleSummary::from_durations([Duration::from_millis(2)]).unwrap();
+    let lighthouse = SampleSummary::from_durations([Duration::from_micros(500)]).unwrap();
+    let report = BenchmarkReport {
+        lighthouse_revision: "revision".to_owned(),
+        samples: 1,
+        comparisons: vec![ComparisonReport::new(
+            "same_claim_aggregate",
+            8,
+            lean,
+            lighthouse,
+            1_024,
+            96,
+        )
+        .unwrap()],
+        supplemental: vec![],
+    };
+
+    let table = report.to_table();
+
+    assert!(table.contains("same_claim_aggregate"));
+    assert!(table.contains('8'));
+    assert!(table.contains("2.000 ms"));
+    assert!(table.contains("500.000 us"));
+    assert!(table.contains("4.00x"));
+    assert!(table.contains("500.00 ops/s"));
+    assert!(table.contains("2000.00 ops/s"));
+    assert!(table.contains("1024"));
+    assert!(table.contains("96"));
+}
+
+#[test]
+fn table_visibly_labels_supplemental_rows_as_lighthouse_only() {
+    let lighthouse = SampleSummary::from_durations([Duration::from_micros(500)]).unwrap();
+    let report = BenchmarkReport {
+        lighthouse_revision: "revision".to_owned(),
+        samples: 1,
+        comparisons: vec![],
+        supplemental: vec![SupplementalReport {
+            workload: "verify_signature_sets".to_owned(),
+            input_size: 8,
+            lighthouse,
+        }],
+    };
+
+    let table = report.to_table();
+
+    assert!(table.contains("verify_signature_sets"));
+    assert!(table.contains("Lighthouse-only"));
+    assert!(table.contains("500.000 us"));
 }

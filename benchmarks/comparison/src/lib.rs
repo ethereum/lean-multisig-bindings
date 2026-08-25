@@ -80,6 +80,45 @@ pub struct ComparisonReport {
     pub lighthouse_artifact_bytes: usize,
 }
 
+impl ComparisonReport {
+    pub fn new(
+        workload: impl Into<String>,
+        input_size: usize,
+        lean: SampleSummary,
+        lighthouse: SampleSummary,
+        lean_artifact_bytes: usize,
+        lighthouse_artifact_bytes: usize,
+    ) -> Result<Self> {
+        let workload = workload.into();
+        ensure!(!workload.is_empty(), "workload must not be empty");
+        ensure!(input_size > 0, "input size must be greater than zero");
+        ensure!(
+            input_size <= MAX_DISTINCT_CLAIMS,
+            "input size {input_size} exceeds maximum {MAX_DISTINCT_CLAIMS}"
+        );
+        ensure!(lean.median_ns > 0, "lean median must be greater than zero");
+        ensure!(
+            lean_artifact_bytes > 0,
+            "lean artifact size must be greater than zero"
+        );
+        ensure!(
+            lighthouse_artifact_bytes > 0,
+            "Lighthouse artifact size must be greater than zero"
+        );
+        let lean_over_lighthouse = lean.ratio_to(&lighthouse)?;
+
+        Ok(Self {
+            workload,
+            input_size,
+            lean,
+            lighthouse,
+            lean_over_lighthouse,
+            lean_artifact_bytes,
+            lighthouse_artifact_bytes,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SupplementalReport {
     pub workload: String,
@@ -93,6 +132,54 @@ pub struct BenchmarkReport {
     pub samples: usize,
     pub comparisons: Vec<ComparisonReport>,
     pub supplemental: Vec<SupplementalReport>,
+}
+
+impl BenchmarkReport {
+    #[must_use]
+    pub fn to_table(&self) -> String {
+        let mut rows = vec![
+            "Workload | Size | Lean median | Lighthouse median | Lean/BLS | Lean ops/s | Lighthouse ops/s | Lean bytes | Lighthouse bytes".to_owned(),
+            "--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:".to_owned(),
+        ];
+
+        for comparison in &self.comparisons {
+            rows.push(format!(
+                "{} | {} | {} | {} | {:.2}x | {:.2} ops/s | {:.2} ops/s | {} | {}",
+                comparison.workload,
+                comparison.input_size,
+                format_duration_ns(comparison.lean.median_ns),
+                format_duration_ns(comparison.lighthouse.median_ns),
+                comparison.lean_over_lighthouse,
+                comparison.lean.operations_per_second,
+                comparison.lighthouse.operations_per_second,
+                comparison.lean_artifact_bytes,
+                comparison.lighthouse_artifact_bytes,
+            ));
+        }
+
+        for supplemental in &self.supplemental {
+            rows.push(format!(
+                "{} (Lighthouse-only) | {} | - | {} | - | - | {:.2} ops/s | - | -",
+                supplemental.workload,
+                supplemental.input_size,
+                format_duration_ns(supplemental.lighthouse.median_ns),
+                supplemental.lighthouse.operations_per_second,
+            ));
+        }
+
+        rows.join("\n")
+    }
+}
+
+fn format_duration_ns(nanoseconds: u64) -> String {
+    match nanoseconds {
+        0..=999 => format!("{nanoseconds} ns"),
+        1_000..=999_999 => format!("{:.3} us", nanoseconds as f64 / 1_000.0),
+        1_000_000..=999_999_999 => {
+            format!("{:.3} ms", nanoseconds as f64 / 1_000_000.0)
+        }
+        _ => format!("{:.3} s", nanoseconds as f64 / 1_000_000_000.0),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
