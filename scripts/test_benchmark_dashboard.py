@@ -86,6 +86,9 @@ class DashboardBuilderTests(unittest.TestCase):
 
     def test_dashboard_labels_proof_and_signature_sizes_explicitly(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("Serialized artifact sizes", html)
+        self.assertIn("Stored secret key (16 signing slots)", html)
+        self.assertIn("Raw signature", html)
         self.assertIn("LeanVM proof size", html)
         self.assertIn("BLS signature size", html)
         self.assertNotIn("Lean artifact", html)
@@ -118,6 +121,12 @@ class DashboardBuilderTests(unittest.TestCase):
                 "\n".join(
                     [
                         "Compiling dependencies",
+                        "artifact-size secret_key_16_slots/lean 788",
+                        "artifact-size secret_key_16_slots/lighthouse 32",
+                        "artifact-size public_key/lean 32",
+                        "artifact-size public_key/lighthouse 48",
+                        "artifact-size raw_signature/lean 1214",
+                        "artifact-size raw_signature/lighthouse 96",
                         "test key_creation/lean ... bench:   5,937,262 ns/iter (+/- 658,840)",
                         "test key_creation/lighthouse ... bench:         843 ns/iter (+/- 8)",
                         "test lighthouse_same_claim_aggregate/512 ... bench:     760,779 ns/iter (+/- 5,231)",
@@ -197,6 +206,17 @@ class DashboardBuilderTests(unittest.TestCase):
                         "median_ns": 760_779,
                         "deviation_ns": 5_231,
                     },
+                ],
+            )
+            self.assertEqual(
+                data["artifacts"],
+                [
+                    {"artifact": "secret_key_16_slots", "implementation": "lean", "bytes": 788},
+                    {"artifact": "secret_key_16_slots", "implementation": "lighthouse", "bytes": 32},
+                    {"artifact": "public_key", "implementation": "lean", "bytes": 32},
+                    {"artifact": "public_key", "implementation": "lighthouse", "bytes": 48},
+                    {"artifact": "raw_signature", "implementation": "lean", "bytes": 1214},
+                    {"artifact": "raw_signature", "implementation": "lighthouse", "bytes": 96},
                 ],
             )
 

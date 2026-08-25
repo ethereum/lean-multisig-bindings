@@ -33,6 +33,21 @@ fn single_operations(criterion: &mut Criterion) {
     .is_ok());
     assert!(bls_signature.verify(bls_public_key, bls_message));
 
+    let artifact_sizes = [
+        ("secret_key_16_slots/lean", lean_key.to_bytes().len()),
+        (
+            "secret_key_16_slots/lighthouse",
+            bls_key.serialize().as_ref().len(),
+        ),
+        ("public_key/lean", lean_public_key.len()),
+        ("public_key/lighthouse", bls_public_key.serialize().len()),
+        ("raw_signature/lean", lean_signature.to_bytes().len()),
+        ("raw_signature/lighthouse", bls_signature.serialize().len()),
+    ];
+    for (artifact, size) in artifact_sizes {
+        println!("artifact-size {artifact} {size}");
+    }
+
     // RangeInclusive counts both endpoints, so 16 active slots end at slot 15.
     let key_creation_last_slot = MAX_DISTINCT_CLAIMS
         .checked_sub(1)

@@ -14,6 +14,16 @@ BENCHMARK_RE = re.compile(
     r"^test (?P<name>\S+) \.\.\. bench:\s+"
     r"(?P<median>[\d,]+) ns/iter \(\+/- (?P<deviation>[\d,]+)\)$"
 )
+ARTIFACT_SIZE_RE = re.compile(
+    r"^artifact-size "
+    r"(?P<artifact>secret_key_16_slots|public_key|raw_signature)/"
+    r"(?P<implementation>lean|lighthouse) (?P<bytes>[1-9]\d*)$"
+)
+EXPECTED_FAST_ARTIFACTS = {
+    (artifact, implementation)
+    for artifact in ("secret_key_16_slots", "public_key", "raw_signature")
+    for implementation in ("lean", "lighthouse")
+}
 PEAK_RSS_RE = re.compile(
     r"^\s*Maximum resident set size \(kbytes\):\s*(?P<value>\S+)\s*$"
 )
@@ -67,9 +77,31 @@ def build_fast(input_path: Path, environment_path: Path, output_path: Path) -> N
     if environment["suite"] != "fast":
         raise ValueError("environment suite must be fast")
 
+    lines = input_path.read_text(encoding="utf-8").splitlines()
+    artifacts = []
+    seen_artifacts = set()
+    for line in lines:
+        match = ARTIFACT_SIZE_RE.fullmatch(line.strip())
+        if not match:
+            continue
+        key = (match.group("artifact"), match.group("implementation"))
+        if key in seen_artifacts:
+            raise ValueError(f"duplicate artifact size: {'/'.join(key)}")
+        seen_artifacts.add(key)
+        artifacts.append(
+            {
+                "artifact": key[0],
+                "implementation": key[1],
+                "bytes": int(match.group("bytes")),
+            }
+        )
+    if seen_artifacts != EXPECTED_FAST_ARTIFACTS:
+        missing = sorted(EXPECTED_FAST_ARTIFACTS - seen_artifacts)
+        raise ValueError(f"benchmark output is missing artifact sizes: {missing}")
+
     benchmarks = []
     seen = set()
-    for line in input_path.read_text(encoding="utf-8").splitlines():
+    for line in lines:
         match = BENCHMARK_RE.fullmatch(line.strip())
         if not match:
             continue
@@ -103,6 +135,7 @@ def build_fast(input_path: Path, environment_path: Path, output_path: Path) -> N
         "environment": {
             key: value for key, value in environment.items() if key != "suite"
         },
+        "artifacts": artifacts,
         "benchmarks": benchmarks,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
