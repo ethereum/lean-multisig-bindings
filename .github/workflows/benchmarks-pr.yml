@@ -10,7 +10,9 @@ on:
       - benchmarks/comparison/**
       - bindings/rust/**
       - leanVM/**
+      - scripts/build_benchmark_dashboard.py
       - scripts/check-benchmark-ci.sh
+      - scripts/test_benchmark_dashboard.py
       - Cargo.lock
       - Cargo.toml
       - rust-toolchain.toml
@@ -80,6 +82,15 @@ jobs:
             --noplot --output-format bencher 2>&1 \
             | tee benchmark-artifacts/fast/criterion-output.txt
 
+      - name: Build current fast dashboard data
+        run: |
+          echo "measured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            >> benchmark-artifacts/fast/environment.txt
+          python3 scripts/build_benchmark_dashboard.py fast \
+            --input benchmark-artifacts/fast/criterion-output.txt \
+            --environment benchmark-artifacts/fast/environment.txt \
+            --output benchmark-artifacts/fast/dashboard.json
+
       - name: Upload fast benchmark artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -106,18 +117,6 @@ jobs:
             fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Compare fast results with benchmark history
-        if: vars.BENCHMARK_HISTORY_ENABLED == 'true'
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
-        with:
-          name: Lighthouse comparison (fast)
-          tool: cargo
-          output-file-path: benchmark-artifacts/fast/criterion-output.txt
-          benchmark-data-dir-path: dev/bench/fast
-          save-data-file: false
-          summary-always: true
-          fail-on-alert: false
 
   slow:
     name: Slow proof comparison benchmarks
@@ -172,14 +171,27 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
+          cargo build --release -p lean-multisig-comparison --bin slow_comparison
+          /usr/bin/time -v -o benchmark-artifacts/slow/resource-usage.txt \
+            target/release/slow_comparison \
             --samples 3 \
             --same-sizes 1,8,16 \
             --distinct-sizes 1,8,16 \
             --warmup-proofs \
-            --json benchmark-artifacts/slow/full.json \
-            --action-json benchmark-artifacts/slow/action.json 2>&1 \
+            --json benchmark-artifacts/slow/full.json 2>&1 \
             | tee benchmark-artifacts/slow/slow-output.txt
+
+      - name: Build current slow dashboard data
+        run: |
+          set -o pipefail
+          echo "measured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            >> benchmark-artifacts/slow/environment.txt
+          python3 scripts/build_benchmark_dashboard.py slow \
+            --input benchmark-artifacts/slow/full.json \
+            --resource benchmark-artifacts/slow/resource-usage.txt \
+            --environment benchmark-artifacts/slow/environment.txt \
+            --output benchmark-artifacts/slow/dashboard.json \
+            | tee -a benchmark-artifacts/slow/slow-output.txt
 
       - name: Upload slow benchmark artifacts
         if: always()
@@ -203,15 +215,3 @@ jobs:
               echo 'Benchmark output was not produced.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Compare slow results with benchmark history
-        if: vars.BENCHMARK_HISTORY_ENABLED == 'true'
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
-        with:
-          name: Lighthouse comparison (slow)
-          tool: customSmallerIsBetter
-          output-file-path: benchmark-artifacts/slow/action.json
-          benchmark-data-dir-path: dev/bench/slow
-          save-data-file: false
-          summary-always: true
-          fail-on-alert: false

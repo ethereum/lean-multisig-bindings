@@ -1,4 +1,4 @@
-name: Benchmark history
+name: Benchmark dashboard
 
 on:
   push:
@@ -10,7 +10,9 @@ on:
       - benchmarks/comparison/**
       - bindings/rust/**
       - leanVM/**
+      - scripts/build_benchmark_dashboard.py
       - scripts/check-benchmark-ci.sh
+      - scripts/test_benchmark_dashboard.py
       - Cargo.lock
       - Cargo.toml
       - rust-toolchain.toml
@@ -47,7 +49,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: benchmark-history
+  group: benchmark-dashboard
   cancel-in-progress: false
 
 jobs:
@@ -108,17 +110,28 @@ jobs:
             --noplot --output-format bencher 2>&1 \
             | tee benchmark-artifacts/fast/criterion-output.txt
 
+      - name: Build current fast dashboard data
+        run: |
+          echo "measured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            >> benchmark-artifacts/fast/environment.txt
+          python3 scripts/build_benchmark_dashboard.py fast \
+            --input benchmark-artifacts/fast/criterion-output.txt \
+            --environment benchmark-artifacts/fast/environment.txt \
+            --output benchmark-artifacts/fast/dashboard.json
+          cp benchmarks/comparison/dashboard/index.html benchmark-artifacts/fast/index.html
+
       - name: Collect Criterion estimates
         run: cp -R target/criterion benchmark-artifacts/fast/criterion
 
-      - name: Upload fast history measurement
+      - name: Upload fast dashboard measurement
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: benchmark-history-fast-${{ github.run_id }}
+          name: benchmark-dashboard-fast-${{ github.run_id }}
           path: benchmark-artifacts/fast/
           if-no-files-found: warn
           retention-days: 30
+          overwrite: true
 
       - name: Add current fast results to the job summary
         if: always()
@@ -209,23 +222,38 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
+          cargo build --release -p lean-multisig-comparison --bin slow_comparison
+          /usr/bin/time -v -o benchmark-artifacts/slow/resource-usage.txt \
+            target/release/slow_comparison \
             --samples "$BENCH_SAMPLES" \
             --same-sizes "$BENCH_SAME_SIZES" \
             --distinct-sizes "$BENCH_DISTINCT_SIZES" \
             --warmup-proofs \
-            --json benchmark-artifacts/slow/full.json \
-            --action-json benchmark-artifacts/slow/action.json 2>&1 \
+            --json benchmark-artifacts/slow/full.json 2>&1 \
             | tee benchmark-artifacts/slow/slow-output.txt
 
-      - name: Upload slow history measurement
+      - name: Build current slow dashboard data
+        run: |
+          set -o pipefail
+          echo "measured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            >> benchmark-artifacts/slow/environment.txt
+          python3 scripts/build_benchmark_dashboard.py slow \
+            --input benchmark-artifacts/slow/full.json \
+            --resource benchmark-artifacts/slow/resource-usage.txt \
+            --environment benchmark-artifacts/slow/environment.txt \
+            --output benchmark-artifacts/slow/dashboard.json \
+            | tee -a benchmark-artifacts/slow/slow-output.txt
+          cp benchmarks/comparison/dashboard/index.html benchmark-artifacts/slow/index.html
+
+      - name: Upload slow dashboard measurement
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: benchmark-history-slow-${{ github.run_id }}
+          name: benchmark-dashboard-slow-${{ github.run_id }}
           path: benchmark-artifacts/slow/
           if-no-files-found: warn
           retention-days: 90
+          overwrite: true
 
       - name: Add current slow results to the job summary
         if: always()
@@ -242,60 +270,62 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
-    name: Publish successful benchmark history
-    if: always() && vars.BENCHMARK_HISTORY_ENABLED == 'true' && (needs.fast.result == 'success' || needs.slow.result == 'success')
+    name: Publish current benchmark dashboard
+    if: always() && (needs.fast.result == 'success' || needs.slow.result == 'success')
     needs: [fast, slow]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      deployments: write
     steps:
-      - name: Initialize trusted Git state
+      - name: Check out the Pages branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          persist-credentials: false
+          ref: gh-pages
           fetch-depth: 1
+          path: site
 
       - name: Download fast measurement
         if: needs.fast.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: benchmark-history-fast-${{ github.run_id }}
+          name: benchmark-dashboard-fast-${{ github.run_id }}
           path: publish/fast
-
-      - name: Publish fast benchmark history
-        if: needs.fast.result == 'success'
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
-        with:
-          name: Lighthouse comparison (fast)
-          tool: cargo
-          output-file-path: publish/fast/criterion-output.txt
-          benchmark-data-dir-path: dev/bench/fast
-          gh-pages-branch: gh-pages
-          github-token: ${{ github.token }}
-          auto-push: true
-          max-items-in-chart: 100
-          summary-always: true
-          fail-on-alert: false
 
       - name: Download slow measurement
         if: needs.slow.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: benchmark-history-slow-${{ github.run_id }}
+          name: benchmark-dashboard-slow-${{ github.run_id }}
           path: publish/slow
 
-      - name: Publish slow benchmark history
-        if: needs.slow.result == 'success'
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
-        with:
-          name: Lighthouse comparison (slow)
-          tool: customSmallerIsBetter
-          output-file-path: publish/slow/action.json
-          benchmark-data-dir-path: dev/bench/slow
-          gh-pages-branch: gh-pages
-          github-token: ${{ github.token }}
-          auto-push: true
-          max-items-in-chart: 100
-          summary-always: true
-          fail-on-alert: false
+      - name: Replace the current suite data
+        shell: bash
+        env:
+          FAST_RESULT: ${{ needs.fast.result }}
+          SLOW_RESULT: ${{ needs.slow.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p site/data
+          if [[ "$FAST_RESULT" == success ]]; then
+            cp publish/fast/dashboard.json site/data/fast.json
+            cp publish/fast/index.html site/index.html
+          fi
+          if [[ "$SLOW_RESULT" == success ]]; then
+            cp publish/slow/dashboard.json site/data/slow.json
+            cp publish/slow/index.html site/index.html
+          fi
+          touch site/.nojekyll
+          if [[ -d site/dev/bench ]]; then
+            rm -r -- site/dev/bench
+            rmdir site/dev 2>/dev/null || true
+          fi
+          cd site
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Current dashboard is already up to date.'
+            exit 0
+          fi
+          git commit -m 'bench: update current benchmark dashboard'
+          git push origin HEAD:gh-pages
