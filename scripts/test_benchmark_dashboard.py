@@ -57,6 +57,11 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn("proof size", lowered)
         self.assertIn("peak rss", lowered)
 
+    def test_dashboard_names_the_slow_section_by_what_it_measures(self):
+        html = DASHBOARD_PATH.read_text(encoding="utf-8")
+        self.assertIn("Aggregate proof generation and verification", html)
+        self.assertNotIn("Proof-backed operations", html)
+
     def test_dashboard_metadata_wraps_and_omits_secondary_details(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
         self.assertIn("overflow-wrap: anywhere", html)
