@@ -53,7 +53,7 @@ Commit as `feat: export CI benchmark results`.
 
 **Step 1: Write a failing workflow policy check**
 
-The check script must fail while the workflow is absent, then validate that all `uses:` references are full SHA pins, the workflow uses `pull_request` but not `pull_request_target`/`workflow_run`, top-level permissions are read-only, the slow job checks for `benchmark-slow`, alerts do not fail CI, and expected timeouts/retention are present.
+The check script must fail while the workflow is absent, then validate that all `uses:` references are full SHA pins, the workflow uses label-aware `pull_request` events but not `pull_request_target`/`workflow_run`, top-level permissions are read-only, the slow job checks for `benchmark-slow`, current results always reach the job summary, history comparison is explicitly enabled, and expected timeouts/retention are present.
 
 Run `sh scripts/check-benchmark-ci.sh`.
 
@@ -61,9 +61,9 @@ Expected: failure because the PR workflow is absent.
 
 **Step 2: Implement the PR workflow**
 
-Use relevant path filters and per-PR cancellation. On `ubuntu-24.04` with Rust 1.94.0, run the fast Criterion suite for every relevant PR and capture combined stdout/stderr. Run the three-sample default-size slow runner with `--warmup-proofs`, full JSON, and action JSON only when the PR has `benchmark-slow`.
+Use relevant path filters and per-PR cancellation. On `ubuntu-24.04` with Rust 1.94.0, run the fast Criterion suite for every relevant PR and capture Cargo-parser-compatible Bencher output. Run the three-sample default-size slow runner with `--warmup-proofs`, full JSON, action JSON, and captured stdout only when the PR has `benchmark-slow`.
 
-Write an environment sidecar, upload artifacts before reporting, and call the pinned benchmark action with `summary-always: true`, `save-data-file: false`, advisory 150% fast/200% slow thresholds, and `fail-on-alert: false`. Skip history fetch unless `BENCHMARK_HISTORY_ENABLED` is true.
+Write an environment sidecar and upload artifacts before reporting. Always append current results directly to the job summary. Only when `BENCHMARK_HISTORY_ENABLED=true`, call the pinned benchmark action with `summary-always: true`, `save-data-file: false`, and `fail-on-alert: false` to show historical ratios. Do not configure automated performance thresholds until their hosted-runner behavior is tested.
 
 **Step 3: Verify GREEN**
 
@@ -104,7 +104,7 @@ Commit as `ci: retain benchmark history`.
 
 **Step 1: Document workflows and setup**
 
-Explain PR fast runs, the `benchmark-slow` label, advisory results, artifacts, weekly/manual modes, expanded same-claim manual inputs, and environment metadata. Document creation of an orphan `gh-pages` branch, Pages configuration, and `BENCHMARK_HISTORY_ENABLED=true`. State that PR workflows never write history.
+Explain PR fast runs, the `benchmark-slow` label, informational results without automated thresholds, artifacts, weekly/manual modes, expanded same-claim manual inputs, and environment metadata. Document creation of an orphan `gh-pages` branch, Pages configuration, and `BENCHMARK_HISTORY_ENABLED=true`. State that PR workflows never write history.
 
 **Step 2: Run final verification**
 

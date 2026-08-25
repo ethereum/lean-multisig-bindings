@@ -70,3 +70,16 @@ cargo test -p lean-multisig-comparison --test fixtures \
 
 When publishing results, include the CPU, operating system, Rust compiler, run
 mode, sample count, and whether proof warm-up was enabled.
+
+## Pull request benchmark CI
+
+Relevant pull requests run the fast suite and place its current Bencher-format
+measurements in the job summary. Applying the `benchmark-slow` label also runs
+three warmed-up samples at sizes `1,8,16` and places the comparison table in
+the job summary. Both jobs retain their raw output, numeric reports, and
+environment metadata as workflow artifacts for 14 days.
+
+These shared-runner measurements are informational. They do not use an
+automated performance threshold and do not gate merging. Historical comparison
+is added to the summary only after maintainers explicitly enable benchmark
+history; the pull request workflow never writes benchmark history.

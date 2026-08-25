@@ -4,7 +4,7 @@
 
 Run the Lighthouse comparison benchmarks in GitHub Actions, make results visible on pull requests, and retain enough structured output to establish historical trends without treating shared-runner timing noise as a correctness failure.
 
-Benchmark execution, signature/proof validation, report conversion, or artifact generation failures will fail CI. Performance changes are advisory: the reporting action will flag large changes in job summaries but `fail-on-alert` remains disabled. This reflects the benchmark action's documented 10–20% variance on hosted runners. No PR comments, external benchmark service, self-hosted runner, or performance merge gate are introduced.
+Benchmark execution, signature/proof validation, report conversion, or artifact generation failures will fail CI. Performance comparisons are informational: shared-runner noise makes an untested automated threshold misleading, so the first version shows current measurements and historical ratios without alerting or gating. No PR comments, external benchmark service, self-hosted runner, or performance merge gate are introduced.
 
 All new actions are pinned to immutable commit SHAs. PR jobs use `pull_request` with `contents: read`; they do not use secrets, write permissions, `pull_request_target`, or `workflow_run`. The expensive proof suite runs on a PR only when a maintainer applies `benchmark-slow`.
 
@@ -12,7 +12,7 @@ All new actions are pinned to immutable commit SHAs. PR jobs use `pull_request` 
 
 Criterion stdout remains the fast-suite input to `github-action-benchmark`'s Cargo parser. The slow runner gains an independent `--action-json PATH` output using the action's `customSmallerIsBetter` schema. Each comparison contributes Lean median time, Lighthouse median time, their ratio, and both artifact sizes. Each supplemental Lighthouse measurement contributes its median time. Names contain workload, implementation/metric, and input size; `extra` records sample count, proof-warmup mode, and pinned Lighthouse revision. The existing full report JSON remains unchanged.
 
-PR jobs upload raw Criterion output, Criterion estimate files, slow full/action JSON, and an environment sidecar. They then render a job summary. If benchmark history is not enabled, the reporting action skips the missing `gh-pages` fetch and displays current results without a baseline.
+PR jobs upload raw Criterion output, Criterion estimate files, slow full/action JSON, and an environment sidecar. They always append the current fast output or slow Markdown table directly to the job summary. The reporting action runs only when benchmark history is enabled, because its fetch cannot display a no-history result without first switching to an existing `gh-pages` branch.
 
 ## Workflows and history
 
@@ -26,4 +26,4 @@ The environment sidecar records the commit, runner OS/image, CPU, kernel, `rustc
 
 ## Verification
 
-Rust tests cover action-entry serialization, exact names/units/values/context, empty-report rejection, CLI parsing, duplicate paths, and preservation of the existing full JSON. Workflow validation checks YAML/action syntax, immutable action pins, read-only PR permissions, label gating, advisory thresholds, trusted publication separation, artifact retention, timeouts, and absence of privileged PR triggers. Local verification includes package tests, formatting, Clippy, release builds, a one-sample action-JSON smoke run, and workflow linting.
+Rust tests cover action-entry serialization, exact names/units/values/context, empty-report rejection, CLI parsing, duplicate paths, and preservation of the existing full JSON. Workflow validation checks YAML/action syntax, immutable action pins, read-only PR permissions, label gating, direct summaries, history-gated comparisons, trusted publication separation, artifact retention, timeouts, and absence of privileged PR triggers. Local verification includes package tests, formatting, Clippy, release builds, a one-sample action-JSON smoke run, and workflow linting.
