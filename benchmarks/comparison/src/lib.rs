@@ -6,7 +6,7 @@
 use std::{
     borrow::Cow,
     ffi::{OsStr, OsString},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -137,6 +137,15 @@ pub struct BenchmarkReport {
     pub supplemental: Vec<SupplementalReport>,
 }
 
+/// One entry in github-action-benchmark's `customSmallerIsBetter` schema.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ActionBenchmark {
+    pub name: String,
+    pub unit: String,
+    pub value: f64,
+    pub extra: String,
+}
+
 impl BenchmarkReport {
     #[must_use]
     pub fn to_table(&self) -> String {
@@ -172,6 +181,83 @@ impl BenchmarkReport {
 
         rows.join("\n")
     }
+
+    pub fn to_action_benchmarks(&self) -> Result<Vec<ActionBenchmark>> {
+        ensure!(
+            !self.comparisons.is_empty() || !self.supplemental.is_empty(),
+            "cannot export an empty benchmark report"
+        );
+
+        let warmup = if self.proof_warmup {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        let extra = format!(
+            "samples={}; proof_warmup={warmup}; lighthouse_revision={}",
+            self.samples, self.lighthouse_revision
+        );
+        let mut entries = Vec::with_capacity(self.comparisons.len() * 5 + self.supplemental.len());
+
+        for comparison in &self.comparisons {
+            let prefix = format!("{}/size-{}", comparison.workload, comparison.input_size);
+            entries.extend([
+                action_entry(
+                    format!("{prefix}/lean/median"),
+                    "ns",
+                    comparison.lean.median_ns as f64,
+                    &extra,
+                ),
+                action_entry(
+                    format!("{prefix}/lighthouse/median"),
+                    "ns",
+                    comparison.lighthouse.median_ns as f64,
+                    &extra,
+                ),
+                action_entry(
+                    format!("{prefix}/lean-over-lighthouse"),
+                    "ratio",
+                    comparison.lean_over_lighthouse,
+                    &extra,
+                ),
+                action_entry(
+                    format!("{prefix}/lean/artifact"),
+                    "bytes",
+                    comparison.lean_artifact_bytes as f64,
+                    &extra,
+                ),
+                action_entry(
+                    format!("{prefix}/lighthouse/artifact"),
+                    "bytes",
+                    comparison.lighthouse_artifact_bytes as f64,
+                    &extra,
+                ),
+            ]);
+        }
+
+        for supplemental in &self.supplemental {
+            entries.push(action_entry(
+                format!(
+                    "{}/size-{}/lighthouse/median",
+                    supplemental.workload, supplemental.input_size
+                ),
+                "ns",
+                supplemental.lighthouse.median_ns as f64,
+                &extra,
+            ));
+        }
+
+        Ok(entries)
+    }
+}
+
+fn action_entry(name: String, unit: &str, value: f64, extra: &str) -> ActionBenchmark {
+    ActionBenchmark {
+        name,
+        unit: unit.to_owned(),
+        value,
+        extra: extra.to_owned(),
+    }
 }
 
 fn format_duration_ns(nanoseconds: u64) -> String {
@@ -191,6 +277,7 @@ pub struct RunConfig {
     pub same_sizes: Vec<usize>,
     pub distinct_sizes: Vec<usize>,
     pub json_path: Option<PathBuf>,
+    pub action_json_path: Option<PathBuf>,
     pub warmup_proofs: bool,
 }
 
@@ -208,6 +295,7 @@ impl RunConfig {
         let mut same_sizes = None;
         let mut distinct_sizes = None;
         let mut json_path = None;
+        let mut action_json_path = None;
         let mut warmup_proofs = false;
 
         while let Some(argument) = arguments.next() {
@@ -261,13 +349,22 @@ impl RunConfig {
                     ensure!(!value.is_empty(), "--json path must not be empty");
                     json_path = Some(PathBuf::from(value));
                 }
+                argument if argument == OsStr::new("--action-json") => {
+                    ensure!(
+                        action_json_path.is_none(),
+                        "--action-json may only be supplied once"
+                    );
+                    let value = option_value("--action-json", arguments.next())?;
+                    ensure!(!value.is_empty(), "--action-json path must not be empty");
+                    action_json_path = Some(PathBuf::from(value));
+                }
                 argument if argument == OsStr::new("--warmup-proofs") => {
                     ensure!(!warmup_proofs, "--warmup-proofs may only be supplied once");
                     warmup_proofs = true;
                 }
                 _ => {
                     return Err(anyhow!(
-                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --json, or --warmup-proofs",
+                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --json, --action-json, or --warmup-proofs",
                         argument.to_string_lossy()
                     ));
                 }
@@ -285,6 +382,13 @@ impl RunConfig {
             );
         }
 
+        if let (Some(json_path), Some(action_json_path)) = (&json_path, &action_json_path) {
+            ensure!(
+                !output_paths_collide(json_path, action_json_path)?,
+                "--json and --action-json must write to different paths"
+            );
+        }
+
         let default_sizes = || vec![1, 8, 16];
         let (same_sizes, distinct_sizes) = if let Some(sizes) = sizes {
             (sizes.clone(), sizes)
@@ -299,9 +403,18 @@ impl RunConfig {
             same_sizes,
             distinct_sizes,
             json_path,
+            action_json_path,
             warmup_proofs,
         })
     }
+}
+
+fn output_paths_collide(left: &Path, right: &Path) -> Result<bool> {
+    let left = std::path::absolute(left)
+        .with_context(|| format!("failed to resolve output path {}", left.display()))?;
+    let right = std::path::absolute(right)
+        .with_context(|| format!("failed to resolve output path {}", right.display()))?;
+    Ok(left == right)
 }
 
 fn option_value(option: &str, value: Option<OsString>) -> Result<OsString> {

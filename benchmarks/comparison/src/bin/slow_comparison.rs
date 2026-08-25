@@ -119,11 +119,21 @@ fn run(config: RunConfig) -> Result<()> {
     println!();
     println!("{}", report.to_table());
 
-    if let Some(path) = config.json_path {
+    if let Some(path) = config.json_path.as_ref() {
         let json = serde_json::to_string_pretty(&report)
             .context("failed to serialize benchmark report as JSON")?;
-        fs::write(&path, json)
+        fs::write(path, json)
             .with_context(|| format!("failed to write JSON report to {}", path.display()))?;
+    }
+
+    if let Some(path) = config.action_json_path.as_ref() {
+        let action_benchmarks = report
+            .to_action_benchmarks()
+            .context("failed to convert benchmark report to action JSON")?;
+        let json = serde_json::to_string_pretty(&action_benchmarks)
+            .context("failed to serialize benchmark action JSON")?;
+        fs::write(path, json)
+            .with_context(|| format!("failed to write action JSON report to {}", path.display()))?;
     }
 
     Ok(())

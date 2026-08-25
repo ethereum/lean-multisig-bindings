@@ -138,7 +138,57 @@ fn config_accepts_samples_sizes_and_json_path() {
     assert_eq!(config.same_sizes, vec![1, 8]);
     assert_eq!(config.distinct_sizes, vec![1, 8]);
     assert_eq!(config.json_path.unwrap().to_str(), Some("/tmp/report.json"));
+    assert!(config.action_json_path.is_none());
     assert!(config.warmup_proofs);
+}
+
+#[test]
+fn config_accepts_action_json_path() {
+    let config = RunConfig::parse_from([
+        "slow-comparison",
+        "--action-json",
+        "/tmp/action-report.json",
+    ])
+    .unwrap();
+
+    assert_eq!(
+        config.action_json_path.unwrap().to_str(),
+        Some("/tmp/action-report.json")
+    );
+}
+
+#[test]
+fn config_rejects_repeated_missing_and_empty_action_json_paths() {
+    for arguments in [
+        vec![
+            "slow-comparison",
+            "--action-json",
+            "/tmp/one.json",
+            "--action-json",
+            "/tmp/two.json",
+        ],
+        vec!["slow-comparison", "--action-json"],
+        vec!["slow-comparison", "--action-json", ""],
+    ] {
+        assert!(RunConfig::parse_from(arguments).is_err());
+    }
+}
+
+#[test]
+fn config_rejects_colliding_full_and_action_json_paths() {
+    let error = RunConfig::parse_from([
+        "slow-comparison",
+        "--json",
+        "/tmp/report.json",
+        "--action-json",
+        "/tmp/report.json",
+    ])
+    .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "--json and --action-json must write to different paths"
+    );
 }
 
 #[test]
@@ -252,6 +302,7 @@ fn unknown_option_error_lists_the_proof_warmup_flag() {
     let error = RunConfig::parse_from(["slow-comparison", "--unknown"]).unwrap_err();
 
     assert!(error.to_string().contains("--warmup-proofs"));
+    assert!(error.to_string().contains("--action-json"));
 }
 
 #[test]
@@ -297,6 +348,152 @@ fn benchmark_report_round_trips_through_json() {
     assert!(report
         .to_table()
         .contains("distinct_claim_verify_conceptual"));
+}
+
+#[test]
+fn action_benchmarks_include_exact_paired_and_supplemental_entries() {
+    let lean = SampleSummary::from_durations([Duration::from_millis(30)]).unwrap();
+    let lighthouse = SampleSummary::from_durations([Duration::from_millis(10)]).unwrap();
+    let report = BenchmarkReport {
+        lighthouse_revision: LIGHTHOUSE_REVISION.to_owned(),
+        samples: 3,
+        proof_warmup: true,
+        comparisons: vec![ComparisonReport::new(
+            "same_claim_aggregate",
+            8,
+            lean,
+            lighthouse.clone(),
+            1_024,
+            96,
+        )
+        .unwrap()],
+        supplemental: vec![SupplementalReport {
+            workload: "lighthouse_signature_sets_verify".to_owned(),
+            input_size: 8,
+            lighthouse,
+        }],
+    };
+
+    let entries = report.to_action_benchmarks().unwrap();
+    let json = serde_json::to_value(&entries).unwrap();
+    let extra =
+        format!("samples=3; proof_warmup=enabled; lighthouse_revision={LIGHTHOUSE_REVISION}");
+
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {
+                "name": "same_claim_aggregate/size-8/lean/median",
+                "unit": "ns",
+                "value": 30_000_000.0,
+                "extra": extra,
+            },
+            {
+                "name": "same_claim_aggregate/size-8/lighthouse/median",
+                "unit": "ns",
+                "value": 10_000_000.0,
+                "extra": extra,
+            },
+            {
+                "name": "same_claim_aggregate/size-8/lean-over-lighthouse",
+                "unit": "ratio",
+                "value": 3.0,
+                "extra": extra,
+            },
+            {
+                "name": "same_claim_aggregate/size-8/lean/artifact",
+                "unit": "bytes",
+                "value": 1_024.0,
+                "extra": extra,
+            },
+            {
+                "name": "same_claim_aggregate/size-8/lighthouse/artifact",
+                "unit": "bytes",
+                "value": 96.0,
+                "extra": extra,
+            },
+            {
+                "name": "lighthouse_signature_sets_verify/size-8/lighthouse/median",
+                "unit": "ns",
+                "value": 10_000_000.0,
+                "extra": extra,
+            },
+        ])
+    );
+}
+
+#[test]
+fn action_benchmark_context_records_disabled_proof_warmup() {
+    let lighthouse = SampleSummary::from_durations([Duration::from_micros(500)]).unwrap();
+    let report = BenchmarkReport {
+        lighthouse_revision: "revision".to_owned(),
+        samples: 1,
+        proof_warmup: false,
+        comparisons: vec![],
+        supplemental: vec![SupplementalReport {
+            workload: "lighthouse_signature_sets_verify".to_owned(),
+            input_size: 1,
+            lighthouse,
+        }],
+    };
+
+    let entries = report.to_action_benchmarks().unwrap();
+
+    assert_eq!(
+        entries[0].extra,
+        "samples=1; proof_warmup=disabled; lighthouse_revision=revision"
+    );
+}
+
+#[test]
+fn action_benchmarks_reject_an_empty_report() {
+    let report = BenchmarkReport {
+        lighthouse_revision: LIGHTHOUSE_REVISION.to_owned(),
+        samples: 3,
+        proof_warmup: true,
+        comparisons: vec![],
+        supplemental: vec![],
+    };
+
+    assert_eq!(
+        report.to_action_benchmarks().unwrap_err().to_string(),
+        "cannot export an empty benchmark report"
+    );
+}
+
+#[test]
+fn action_export_does_not_change_the_full_report_schema() {
+    let lighthouse = SampleSummary::from_durations([Duration::from_micros(500)]).unwrap();
+    let report = BenchmarkReport {
+        lighthouse_revision: "revision".to_owned(),
+        samples: 1,
+        proof_warmup: false,
+        comparisons: vec![],
+        supplemental: vec![SupplementalReport {
+            workload: "lighthouse_signature_sets_verify".to_owned(),
+            input_size: 1,
+            lighthouse,
+        }],
+    };
+
+    let json = serde_json::to_value(&report).unwrap();
+    let keys = json
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        keys,
+        vec![
+            "comparisons",
+            "lighthouse_revision",
+            "proof_warmup",
+            "samples",
+            "supplemental",
+        ]
+    );
 }
 
 #[test]
