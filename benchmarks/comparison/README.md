@@ -50,23 +50,30 @@ Add `--warmup-proofs` for steady-state proof measurements. Without it, no
 explicit Lean proof warm-up runs; recorded samples may include process-local
 first-use effects. Add `--json PATH` to save the unchanged machine-readable
 report alongside the table printed to stdout. Add `--action-json PATH` to save
-the independent `customSmallerIsBetter` input used by benchmark CI; the two
-output paths must resolve to different files. Fixture setup, post-timing
-correctness checks, and the Lean input clone performed immediately before
-aggregation are outside the timed region. Lighthouse operations are calibrated
-in batches of at least 10 ms and reported per operation.
+an independent `customSmallerIsBetter` export for optional external consumers;
+the two output paths must resolve to different files. The current CI dashboard
+does not use this export. Fixture setup, post-timing correctness checks, and the
+Lean input clone performed immediately before aggregation are outside the timed
+region. Lighthouse operations are calibrated in batches of at least 10 ms and
+reported per operation.
 
 The local equivalent of the opt-in slow PR job is:
 
 ```bash
-cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
+cargo build --release -p lean-multisig-comparison --bin slow_comparison
+/usr/bin/time -v -o resource-usage.txt target/release/slow_comparison \
   --samples 3 \
   --same-sizes 1,8,16 \
   --distinct-sizes 1,8,16 \
   --warmup-proofs \
-  --json full.json \
-  --action-json action.json
+  --json full.json
 ```
+
+`resource-usage.txt` contains the process-wide peak resident set size for the
+complete slow suite, not a per-workload attribution. CI normalizes this value to
+bytes together with `full.json` for the dashboard. GNU `/usr/bin/time` reports
+RSS in KiB; normalization rejects missing, duplicate, malformed, zero, or
+unrepresentable measurements.
 
 `distinct_claim_verify_conceptual` uses Lighthouse `aggregate_verify`, which
 Lighthouse documents as an EF-test-only, non-production path. Use the
@@ -90,14 +97,16 @@ mode, sample count, and whether proof warm-up was enabled.
 Relevant pull requests run the fast suite and place its current Bencher-format
 measurements in the job summary. Applying the `benchmark-slow` label also runs
 three warmed-up samples at sizes `1,8,16` and places the comparison table in
-the job summary. Applying unrelated labels does not rerun either suite. Both
-jobs retain their raw output, numeric reports, Criterion estimates where
-applicable, and environment metadata as workflow artifacts for 14 days.
+the job summary. The normalized slow artifact also includes overall peak RSS.
+Applying unrelated labels does not rerun either suite. Both jobs retain their
+raw output, normalized data, and environment metadata as workflow artifacts for
+14 days. Fast artifacts also contain Criterion estimates; slow artifacts contain
+the full numeric report and GNU time resource report.
 
 These shared-runner measurements are informational. They do not use an
-automated performance threshold and do not gate merging. Historical comparison
-is added to the summary only after maintainers explicitly enable benchmark
-history; the pull request workflow never writes benchmark history.
+automated performance threshold and do not gate merging. The pull request
+workflow has read-only repository permissions and never updates the public
+dashboard.
 
 Benchmark execution, proof/signature validation, report conversion, and
 artifact failures still fail their jobs. Each environment sidecar records the
@@ -105,9 +114,9 @@ commit, runner OS and architecture, runner image name and version, CPU, kernel,
 Rust and Cargo versions, the manifest-derived Lighthouse revision, suite,
 sample count, size axes, and proof-warmup mode.
 
-## Trusted benchmark history
+## Current-results dashboard
 
-The history workflow has three modes:
+The trusted benchmark workflow has three modes:
 
 - Relevant pushes to `main` run and retain the fast suite for 30 days.
 - A weekly Monday 03:17 UTC schedule runs the slow suite with three samples,
@@ -115,7 +124,7 @@ The history workflow has three modes:
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
   count (minimum 3) and independent same/distinct size lists. Manual slow runs
   always use proof warm-up. One-sample smoke runs remain local-only and cannot
-  be published by the history workflow.
+  be published by the workflow.
 
 For example, this explicitly opts into the large same-claim sweep while keeping
 distinct claims within their hard limit of 16:
@@ -131,15 +140,19 @@ gh workflow run benchmarks-history.yml \
 That run can take substantial time and memory. It is never part of a push,
 pull-request, or scheduled default.
 
-Measurement jobs are read-only. A separate publication job downloads only
-successful numeric artifacts and publishes fast and slow histories sequentially
-to `dev/bench/fast` and `dev/bench/slow`. It performs a shallow checkout of the
-trusted workflow revision, without persisting checkout credentials, solely to
-initialize the Git state required by the publisher. It never executes repository
-code. Publication is disabled unless the repository variable
-`BENCHMARK_HISTORY_ENABLED` is exactly `true`.
+Each successful measurement produces a validated `dashboard.json`. A separate
+publication job downloads only successful artifacts, checks out `gh-pages`, and
+replaces `data/fast.json` and/or `data/slow.json`. A fast-only run preserves the
+last slow result and vice versa. It also installs the static dashboard as the
+branch-root `index.html`; it does not execute measured repository code.
 
-### One-time history setup
+The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It shows
+only the newest result for each suite: Lean and Lighthouse timings, throughput,
+and ratios; artifact sizes for proof-backed operations; overall slow-suite peak
+RSS; and the measurement environment. There are no commit-over-commit plots.
+The first publication removes the old nested `dev/bench` pages.
+
+### One-time Pages setup
 
 Create an orphan `gh-pages` branch. To avoid disturbing a working checkout, do
 this in a temporary clone (set `REPOSITORY_URL` first):
@@ -152,20 +165,11 @@ git switch --orphan gh-pages
 git rm -rf .
 touch .nojekyll
 git add .nojekyll
-git commit -m 'chore: initialize benchmark history'
+git commit -m 'chore: initialize benchmark dashboard'
 git push origin gh-pages
 ```
 
 In repository settings, configure GitHub Pages to deploy from the `gh-pages`
 branch and its root directory. Ensure GitHub Actions may use the workflow's
-declared write permissions. Only after that setup, enable publication:
-
-```bash
-gh variable set BENCHMARK_HISTORY_ENABLED --body true
-```
-
-The trusted history workflow may then update `gh-pages`, while PR workflows
-retain `contents: read`, receive no secrets, and never write history. Leave the
-variable unset or set it to any value other than `true` to keep history
-publication disabled without disabling measurement artifacts and current-result
-summaries.
+declared write permission. Trusted `main`, schedule, and manual runs may then
+update `gh-pages`; PR workflows retain `contents: read` and receive no secrets.
