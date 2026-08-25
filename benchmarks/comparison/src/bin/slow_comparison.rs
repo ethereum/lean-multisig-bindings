@@ -578,6 +578,8 @@ fn calibrate_batch_iterations(
     mut measure_batch: impl FnMut(usize) -> Result<Duration>,
 ) -> Result<usize> {
     const MAX_STEPS: usize = 8;
+    const HEADROOM_NUMERATOR: u128 = 5;
+    const HEADROOM_DENOMINATOR: u128 = 4;
     ensure!(
         !minimum_duration.is_zero(),
         "minimum batch duration must be greater than zero"
@@ -594,11 +596,17 @@ fn calibrate_batch_iterations(
             return Ok(iterations);
         }
 
+        // Aim 25% above the acceptance threshold so normal timing jitter cannot
+        // trap calibration in repeated just-under-threshold measurements.
         let numerator = minimum_duration
             .as_nanos()
             .checked_mul(iterations as u128)
+            .and_then(|value| value.checked_mul(HEADROOM_NUMERATOR))
             .context("calibration iteration estimate overflowed")?;
-        let denominator = elapsed.as_nanos();
+        let denominator = elapsed
+            .as_nanos()
+            .checked_mul(HEADROOM_DENOMINATOR)
+            .context("calibration iteration estimate overflowed")?;
         let estimated = numerator
             .checked_add(denominator - 1)
             .context("calibration iteration estimate overflowed")?
@@ -742,8 +750,38 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(iterations, 10);
-        assert_eq!(*observed.borrow(), vec![1, 10]);
+        assert_eq!(iterations, 13);
+        assert_eq!(*observed.borrow(), vec![1, 13]);
+    }
+
+    #[test]
+    fn calibration_escapes_sub_threshold_timing_jitter() {
+        let observed = RefCell::new(Vec::new());
+        let elapsed_percent = [100_u128, 95, 94, 93, 92, 91, 90, 89];
+
+        let iterations = calibrate_batch_iterations(Duration::from_millis(10), |iterations| {
+            let call = observed.borrow().len();
+            let elapsed_ns = (iterations as u128)
+                .checked_mul(1_000)
+                .and_then(|value| value.checked_mul(elapsed_percent[call]))
+                .unwrap()
+                / 100;
+            let elapsed = Duration::from_nanos(u64::try_from(elapsed_ns).unwrap());
+            observed.borrow_mut().push((iterations, elapsed));
+            Ok(elapsed)
+        })
+        .unwrap();
+
+        assert_eq!(iterations, 12_500);
+        assert_eq!(
+            observed
+                .borrow()
+                .iter()
+                .map(|(iterations, _)| *iterations)
+                .collect::<Vec<_>>(),
+            vec![1, 12_500]
+        );
+        assert!(observed.borrow().last().unwrap().1 >= Duration::from_millis(10));
     }
 
     #[test]
@@ -756,6 +794,19 @@ mod tests {
             calibrate_batch_iterations(Duration::from_millis(10), |_| { Ok(Duration::ZERO) })
                 .is_err()
         );
+    }
+
+    #[test]
+    fn calibration_reports_iteration_estimate_overflow() {
+        let calls = RefCell::new(0);
+        let error = calibrate_batch_iterations(Duration::MAX, |_| {
+            *calls.borrow_mut() += 1;
+            Ok(Duration::from_secs(2))
+        })
+        .unwrap_err();
+
+        assert_eq!(*calls.borrow(), 2);
+        assert!(error.to_string().contains("estimate overflowed"));
     }
 
     #[test]
