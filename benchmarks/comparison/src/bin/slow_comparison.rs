@@ -134,11 +134,12 @@ fn measure_same_claim_aggregate(
         "{WORKLOAD} (input size {size}): Lighthouse warm-up aggregate failed verification"
     );
 
+    let lean_inputs = prepare_lean_inputs(fixtures.lean_signatures(), samples);
     let mut lean_durations = Vec::with_capacity(samples);
     let mut retained_lean = None;
-    for sample in 0..samples {
+    for (sample, signatures) in lean_inputs.into_iter().enumerate() {
         let start = Instant::now();
-        let aggregate = lean_multisig::aggregate(fixtures.lean_signatures().to_vec(), &claim);
+        let aggregate = lean_multisig::aggregate(signatures, &claim);
         let duration = start.elapsed();
         let aggregate = aggregate.with_context(|| {
             format!("{WORKLOAD} (input size {size}, sample {sample}): Lean aggregation failed")
@@ -258,11 +259,12 @@ fn measure_distinct_claim_aggregate(
         "{WORKLOAD} (input size {size}): Lighthouse warm-up aggregate failed verification"
     );
 
+    let lean_inputs = prepare_lean_inputs(fixtures.lean_signatures(), samples);
     let mut lean_durations = Vec::with_capacity(samples);
     let mut retained_lean = None;
-    for sample in 0..samples {
+    for (sample, signatures) in lean_inputs.into_iter().enumerate() {
         let start = Instant::now();
-        let aggregate = lean_multisig::merge_claims(fixtures.lean_signatures().to_vec());
+        let aggregate = lean_multisig::merge_claims(signatures);
         let duration = start.elapsed();
         let aggregate = aggregate.with_context(|| {
             format!("{WORKLOAD} (input size {size}, sample {sample}): Lean aggregation failed")
@@ -397,6 +399,15 @@ fn aggregate_bls(signatures: &[lighthouse_bls::Signature]) -> lighthouse_bls::Ag
     aggregate
 }
 
+fn prepare_lean_inputs(
+    signatures: &[lean_multisig::Signature],
+    samples: usize,
+) -> Vec<Vec<lean_multisig::Signature>> {
+    std::iter::repeat_with(|| signatures.to_vec())
+        .take(samples)
+        .collect()
+}
+
 fn summarize(
     durations: Vec<std::time::Duration>,
     workload: &str,
@@ -406,4 +417,19 @@ fn summarize(
     SampleSummary::from_durations(durations).with_context(|| {
         format!("failed to summarize {implementation} {workload} samples for input size {size}")
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepares_one_owned_lean_input_per_sample() {
+        let fixtures = FixtureSet::same_claim(2).unwrap();
+
+        let prepared = prepare_lean_inputs(fixtures.lean_signatures(), 3);
+
+        assert_eq!(prepared.len(), 3);
+        assert!(prepared.iter().all(|input| input.len() == 2));
+    }
 }
