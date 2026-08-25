@@ -275,6 +275,10 @@
           <dd>The LeanVM proof size is the serialized zkVM proof produced by aggregation. The Lighthouse value is the serialized aggregate BLS signature.</dd>
         </div>
         <div>
+          <dt>Serialized artifact sizes</dt>
+          <dd>Storage or wire-encoding sizes, not in-memory object sizes. The LeanVM secret key is generated for the benchmark’s 16 signing slots.</dd>
+        </div>
+        <div>
           <dt>Suite peak RSS</dt>
           <dd>The maximum physical memory used by the complete slow-suite process. It is not measured separately for each row.</dd>
         </div>
@@ -305,6 +309,13 @@
     function operationLabel(workload, inputSize) {
       const label = humanLabel(workload);
       return inputSize == null ? label : `${label} (size = ${inputSize})`;
+    }
+
+    function artifactLabel(artifact) {
+      if (artifact === "secret_key_16_slots") return "Stored secret key (16 signing slots)";
+      if (artifact === "public_key") return "Public key";
+      if (artifact === "raw_signature") return "Raw signature";
+      return humanLabel(artifact);
     }
 
     function duration(nanoseconds) {
@@ -419,6 +430,24 @@
       const target = document.getElementById("fast-results");
       target.replaceChildren();
       addFacts(target, environmentFacts(data));
+
+      const artifactGroups = new Map();
+      for (const result of data.artifacts || []) {
+        if (!artifactGroups.has(result.artifact)) artifactGroups.set(result.artifact, {});
+        artifactGroups.get(result.artifact)[result.implementation] = result.bytes;
+      }
+      if (artifactGroups.size > 0) {
+        target.append(node("h3", "Serialized artifact sizes", "subtable-title"));
+        addTable(
+          target,
+          ["Artifact", "LeanVM", "Lighthouse BLS"],
+          Array.from(artifactGroups, ([artifact, implementations]) => [
+            artifactLabel(artifact),
+            bytes(implementations.lean),
+            bytes(implementations.lighthouse),
+          ]),
+        );
+      }
 
       const groups = new Map();
       for (const result of data.benchmarks) {
