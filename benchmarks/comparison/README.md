@@ -97,10 +97,13 @@ mode, sample count, and whether proof warm-up was enabled.
 
 ## Pull request benchmark CI
 
-Relevant same-repository pull requests run the fast suite and three warmed-up
+Pull request benchmarks are opt-in. Add the `run-benchmarks` label to a
+same-repository pull request to run the fast suite and three warmed-up
 slow-suite samples on the dedicated self-hosted runner labeled `benchmark`.
-Fork pull requests are skipped because benchmark jobs execute repository code
-on that machine. Same-claim proofs use sizes `1,8,16,256,512`;
+New commits rerun the suites while the label is present. Removing the label or
+closing the pull request cancels an active run. Fork pull requests are skipped
+because benchmark jobs execute repository code on that machine. Same-claim
+proofs use sizes `1,8,16,256,512`;
 distinct-claim proofs use `1,8,16`. Both place their current measurements in the
 job summary, and the normalized slow artifact includes overall peak RSS. Both
 jobs retain their raw output, normalized data, and environment metadata as

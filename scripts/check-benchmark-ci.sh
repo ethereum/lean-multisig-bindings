@@ -71,10 +71,14 @@ reject_text "$pr_workflow" 'benchmark-action|BENCHMARK_HISTORY_ENABLED|save-data
 reject_text "$pr_workflow" '--action-json' 'obsolete action JSON output'
 require_text "$pr_workflow" '^permissions:$' 'top-level permissions block'
 require_text "$pr_workflow" '^  contents: read$' 'read-only contents permission'
-require_text "$pr_workflow" 'types: \[opened, synchronize, reopened\]' 'standard pull request event types'
+require_text "$pr_workflow" 'types: \[labeled, unlabeled, synchronize, reopened, closed\]' 'opt-in pull request event types'
 require_text "$pr_workflow" '^      - scripts/build_benchmark_dashboard\.py$' 'dashboard builder path trigger'
 require_text "$pr_workflow" '^      - scripts/test_benchmark_dashboard\.py$' 'dashboard test path trigger'
-reject_text "$pr_workflow" 'benchmark-slow|github\.event\.action == .labeled.|github\.event\.action != .labeled.' 'obsolete slow-benchmark label routing'
+reject_text "$pr_workflow" 'benchmark-slow' 'obsolete slow-benchmark label routing'
+pr_label_guards=$(grep -Fc "contains(github.event.pull_request.labels.*.name, 'run-benchmarks')" "$pr_workflow" || true)
+[ "$pr_label_guards" -eq 2 ] || fail "$pr_workflow: both benchmark jobs must require the run-benchmarks label"
+pr_closed_guards=$(grep -Fc "github.event.action != 'closed'" "$pr_workflow" || true)
+[ "$pr_closed_guards" -eq 2 ] || fail "$pr_workflow: closing a pull request must cancel rather than restart its benchmarks"
 require_literal "$pr_workflow" 'timeout-minutes: 30' '30-minute fast timeout'
 require_literal "$pr_workflow" 'timeout-minutes: 180' '180-minute slow timeout'
 require_literal "$pr_workflow" 'retention-days: 14' '14-day artifact retention'
@@ -97,7 +101,7 @@ require_literal "$pr_workflow" 'cat benchmark-artifacts/fast/criterion-output.tx
 require_text "$pr_workflow" 'sed .*benchmark-artifacts/slow/slow-output\.txt' 'direct slow summary'
 pr_benchmark_runners=$(grep -Fc 'runs-on: [self-hosted, benchmark]' "$pr_workflow" || true)
 [ "$pr_benchmark_runners" -eq 2 ] || fail "$pr_workflow: both benchmark jobs must use the dedicated benchmark runner"
-trusted_pr_jobs=$(grep -Fc 'if: github.event.pull_request.head.repo.full_name == github.repository' "$pr_workflow" || true)
+trusted_pr_jobs=$(grep -Fc 'github.event.pull_request.head.repo.full_name == github.repository' "$pr_workflow" || true)
 [ "$trusted_pr_jobs" -eq 2 ] || fail "$pr_workflow: self-hosted benchmark jobs must reject fork pull requests"
 reject_text "$pr_workflow" 'runs-on: ubuntu-24\.04' 'GitHub-hosted benchmark runner'
 require_literal "$pr_workflow" 'toolchain: 1.94.0' 'pinned Rust toolchain'
