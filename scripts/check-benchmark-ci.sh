@@ -95,7 +95,11 @@ require_literal "$pr_workflow" 'echo "distinct_sizes=1,8,16"' 'normal distinct-c
 require_literal "$pr_workflow" '--distinct-sizes 1,8,16' 'normal distinct-claim proof arguments'
 require_literal "$pr_workflow" 'cat benchmark-artifacts/fast/criterion-output.txt' 'direct fast summary'
 require_text "$pr_workflow" 'sed .*benchmark-artifacts/slow/slow-output\.txt' 'direct slow summary'
-require_literal "$pr_workflow" 'ubuntu-24.04' 'pinned runner image'
+pr_benchmark_runners=$(grep -Fc 'runs-on: [self-hosted, benchmark]' "$pr_workflow" || true)
+[ "$pr_benchmark_runners" -eq 2 ] || fail "$pr_workflow: both benchmark jobs must use the dedicated benchmark runner"
+trusted_pr_jobs=$(grep -Fc 'if: github.event.pull_request.head.repo.full_name == github.repository' "$pr_workflow" || true)
+[ "$trusted_pr_jobs" -eq 2 ] || fail "$pr_workflow: self-hosted benchmark jobs must reject fork pull requests"
+reject_text "$pr_workflow" 'runs-on: ubuntu-24\.04' 'GitHub-hosted benchmark runner'
 require_literal "$pr_workflow" 'toolchain: 1.94.0' 'pinned Rust toolchain'
 require_literal "$pr_workflow" 'runner_image_os=${ImageOS:-unknown}' 'runner image OS metadata'
 require_literal "$pr_workflow" 'runner_image_version=${ImageVersion:-unknown}' 'runner image version metadata'
@@ -122,6 +126,10 @@ require_text "$history_workflow" '^permissions:$' 'top-level permissions block'
 require_text "$history_workflow" '^  contents: read$' 'read-only measurement permission'
 require_literal "$history_workflow" 'group: benchmark-dashboard' 'shared publication concurrency group'
 require_literal "$history_workflow" 'cancel-in-progress: false' 'non-cancelling publication concurrency'
+history_benchmark_runners=$(grep -Fc 'runs-on: [self-hosted, benchmark]' "$history_workflow" || true)
+[ "$history_benchmark_runners" -eq 2 ] || fail "$history_workflow: both measurement jobs must use the dedicated benchmark runner"
+history_publish_runners=$(grep -Fc 'runs-on: ubuntu-24.04' "$history_workflow" || true)
+[ "$history_publish_runners" -eq 1 ] || fail "$history_workflow: only dashboard publication should use GitHub-hosted Ubuntu"
 require_literal "$history_workflow" "if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fast' || inputs.suite == 'all'))" 'fast trigger routing'
 require_literal "$history_workflow" "if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'slow' || inputs.suite == 'all'))" 'slow trigger routing'
 require_literal "$history_workflow" '[[ "$BENCH_SAMPLES" =~ ^[0-9]+$ ]] && (( 10#$BENCH_SAMPLES >= 3 ))' 'slow sample validation'

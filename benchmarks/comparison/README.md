@@ -97,15 +97,18 @@ mode, sample count, and whether proof warm-up was enabled.
 
 ## Pull request benchmark CI
 
-Relevant pull requests run the fast suite and three warmed-up slow-suite samples
-in parallel. Same-claim proofs use sizes `1,8,16,256,512`; distinct-claim proofs
-use `1,8,16`. Both place their current measurements in the job summary, and the
-normalized slow artifact includes overall peak RSS. Both jobs retain their raw
-output, normalized data, and environment metadata as workflow artifacts for 14
-days. Fast dashboard data is normalized from Criterion's structured estimates;
-slow artifacts contain the full numeric report and GNU time resource report.
+Relevant same-repository pull requests run the fast suite and three warmed-up
+slow-suite samples on the dedicated self-hosted runner labeled `benchmark`.
+Fork pull requests are skipped because benchmark jobs execute repository code
+on that machine. Same-claim proofs use sizes `1,8,16,256,512`;
+distinct-claim proofs use `1,8,16`. Both place their current measurements in the
+job summary, and the normalized slow artifact includes overall peak RSS. Both
+jobs retain their raw output, normalized data, and environment metadata as
+workflow artifacts for 14 days. Fast dashboard data is normalized from
+Criterion's structured estimates; slow artifacts contain the full numeric
+report and GNU time resource report.
 
-These shared-runner measurements are informational. They do not use an
+These dedicated-runner measurements are informational. They do not use an
 automated performance threshold and do not gate merging. The pull request
 workflow has read-only repository permissions and never updates the public
 dashboard.
@@ -120,10 +123,11 @@ sample count, applicable size axes, and proof-warmup mode.
 
 The trusted benchmark workflow has three modes:
 
-- Relevant pushes to `main` run both suites in parallel. The slow suite uses
-  three samples and proof warm-up, with same-claim sizes `1,8,16,256,512` and
-  distinct-claim sizes `1,8,16`. Fast artifacts are retained for 30 days and
-  slow artifacts for 90 days.
+- Relevant pushes to `main` run both suites on the dedicated self-hosted runner
+  labeled `benchmark`. With one matching runner, the jobs execute one at a
+  time. The slow suite uses three samples and proof warm-up, with same-claim
+  sizes `1,8,16,256,512` and distinct-claim sizes `1,8,16`. Fast artifacts are
+  retained for 30 days and slow artifacts for 90 days.
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
   count (minimum 3) and independent same/distinct size lists. Manual slow runs
   always use proof warm-up. One-sample smoke runs remain local-only and cannot
