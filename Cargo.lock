@@ -14,7 +14,7 @@ dependencies = [
 [[package]]
 name = "air"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "field",
  "koala-bear",
@@ -404,7 +404,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 [[package]]
 name = "backend"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "air",
  "fiat-shamir",
@@ -1183,7 +1183,7 @@ dependencies = [
 [[package]]
 name = "fiat-shamir"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "field",
  "koala-bear",
@@ -1196,7 +1196,7 @@ dependencies = [
 [[package]]
 name = "field"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "paste",
  "rand 0.10.1",
@@ -1751,7 +1751,7 @@ dependencies = [
 [[package]]
 name = "koala-bear"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "field",
  "paste",
@@ -1821,7 +1821,7 @@ dependencies = [
 [[package]]
 name = "lean_compiler"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "backend",
  "include_dir",
@@ -1835,7 +1835,7 @@ dependencies = [
 [[package]]
 name = "lean_multisig_api"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "backend",
  "ethereum_ssz",
@@ -1850,7 +1850,7 @@ dependencies = [
 [[package]]
 name = "lean_prover"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "backend",
  "lean_compiler",
@@ -1865,7 +1865,7 @@ dependencies = [
 [[package]]
 name = "lean_vm"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "backend",
  "tracing",
@@ -2098,7 +2098,7 @@ dependencies = [
 [[package]]
 name = "parallel"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "system-info",
 ]
@@ -2227,7 +2227,7 @@ dependencies = [
 [[package]]
 name = "poly"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "field",
  "koala-bear",
@@ -2548,7 +2548,7 @@ dependencies = [
 [[package]]
 name = "rec_aggregation"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "backend",
  "include_dir",
@@ -2987,7 +2987,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "sub_protocols"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "backend",
  "lean_vm",
@@ -3003,7 +3003,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sumcheck"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "air",
  "fiat-shamir",
@@ -3018,7 +3018,7 @@ dependencies = [
 [[package]]
 name = "symetric"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "field",
  "koala-bear",
@@ -3062,7 +3062,7 @@ dependencies = [
 [[package]]
 name = "system-info"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "libc",
 ]
@@ -3346,7 +3346,7 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 [[package]]
 name = "utils"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "parallel",
  "serde",
@@ -3492,7 +3492,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "fiat-shamir",
  "field",
@@ -3530,7 +3530,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3795,7 +3795,7 @@ dependencies = [
 [[package]]
 name = "xmss"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "backend",
  "ethereum_ssz",
@@ -3848,7 +3848,7 @@ dependencies = [
 [[package]]
 name = "zk-alloc"
 version = "0.1.0"
-source = "git+https://github.com/kevaundray/leanVM.git?rev=aed646200cf5ae3199c25c61f2bfe094582678ae#aed646200cf5ae3199c25c61f2bfe094582678ae"
+source = "git+https://github.com/kevaundray/leanVM.git?rev=f4d2270ac0f694da386489452589664105de0829#f4d2270ac0f694da386489452589664105de0829"
 dependencies = [
  "libc",
  "parallel",
