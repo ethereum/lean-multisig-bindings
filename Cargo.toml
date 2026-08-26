@@ -9,7 +9,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-lean_multisig_api = { git = "https://github.com/kevaundray/leanVM.git", rev = "aed646200cf5ae3199c25c61f2bfe094582678ae" }
+lean_multisig_api = { git = "https://github.com/kevaundray/leanVM.git", rev = "f4d2270ac0f694da386489452589664105de0829" }
 
 [profile.release]
 lto = "thin"
