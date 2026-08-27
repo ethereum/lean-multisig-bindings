@@ -12,18 +12,19 @@ from pathlib import Path
 
 ARTIFACT_SIZE_RE = re.compile(
     r"^artifact-size "
-    r"(?P<artifact>secret_key_16_slots|public_key|raw_signature)/"
+    r"(?P<artifact>public_key|raw_signature)/"
     r"(?P<implementation>lean|lighthouse) (?P<bytes>[1-9]\d*)$"
 )
 EXPECTED_FAST_ARTIFACTS = {
     (artifact, implementation)
-    for artifact in ("secret_key_16_slots", "public_key", "raw_signature")
+    for artifact in ("public_key", "raw_signature")
     for implementation in ("lean", "lighthouse")
 }
 PEAK_RSS_RE = re.compile(
     r"^\s*Maximum resident set size \(kbytes\):\s*(?P<value>\S+)\s*$"
 )
 MAX_EXACT_KIB = (2**53 - 1) // 1024
+KEY_CREATION_SLOTS = 2**20
 
 
 def parse_environment(path: Path) -> dict[str, str]:
@@ -291,6 +292,15 @@ def build_slow(
         validate_comparison(row, samples, index)
     for index, row in enumerate(supplemental):
         validate_supplemental(row, samples, index)
+    key_creation = [
+        row for row in comparisons if row.get("workload") == "key_creation"
+    ]
+    if len(key_creation) != 1:
+        raise ValueError("comparisons must contain exactly one key_creation row")
+    if key_creation[0].get("input_size") != KEY_CREATION_SLOTS:
+        raise ValueError(f"key_creation must measure {KEY_CREATION_SLOTS} slots")
+    if environment.get("key_creation_slots") != str(KEY_CREATION_SLOTS):
+        raise ValueError("environment key_creation_slots does not match the benchmark")
 
     peak_rss_bytes = parse_peak_rss(resource_path)
     document = {

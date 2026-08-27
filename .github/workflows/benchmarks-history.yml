@@ -148,7 +148,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   slow:
-    name: Measure slow proof benchmarks
+    name: Measure large-key and proof benchmarks
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'slow' || inputs.suite == 'all'))
     runs-on: [self-hosted, benchmark]
     timeout-minutes: 180
@@ -207,6 +207,7 @@ jobs:
             echo "lighthouse_revision=$lighthouse_revision"
             echo "suite=slow"
             echo "samples=$BENCH_SAMPLES"
+            echo "key_creation_slots=1048576"
             echo "same_sizes=$BENCH_SAME_SIZES"
             echo "distinct_sizes=$BENCH_DISTINCT_SIZES"
             echo "proof_warmup=enabled"
@@ -216,7 +217,7 @@ jobs:
             lscpu
           } > benchmark-artifacts/slow/environment.txt
 
-      - name: Run steady-state slow proof benchmarks
+      - name: Run large-key and steady-state proof benchmarks
         shell: bash
         run: |
           set -o pipefail

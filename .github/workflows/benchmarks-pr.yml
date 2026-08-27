@@ -122,7 +122,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   slow:
-    name: Slow proof comparison benchmarks
+    name: Large-key and proof comparison benchmarks
     if: >-
       github.event.action != 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -164,6 +164,7 @@ jobs:
             echo "lighthouse_revision=$lighthouse_revision"
             echo "suite=slow"
             echo "samples=3"
+            echo "key_creation_slots=1048576"
             echo "same_sizes=1,8,16,256,512"
             echo "distinct_sizes=1,8,16"
             echo "proof_warmup=enabled"
@@ -173,7 +174,7 @@ jobs:
             lscpu
           } > benchmark-artifacts/slow/environment.txt
 
-      - name: Run slow proof benchmarks
+      - name: Run large-key and proof benchmarks
         shell: bash
         run: |
           set -o pipefail

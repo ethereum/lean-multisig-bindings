@@ -229,7 +229,7 @@
       <div class="section-heading">
         <div>
           <h2 id="fast-title">Fast operations</h2>
-          <p>Key and raw-signature operations without aggregation.</p>
+          <p>Raw signature operations without aggregation.</p>
         </div>
         <span class="stamp" id="fast-stamp">Loading…</span>
       </div>
@@ -239,8 +239,8 @@
     <section aria-labelledby="slow-title">
       <div class="section-heading">
         <div>
-          <h2 id="slow-title">Aggregate proof generation and verification</h2>
-          <p>Full LeanVM proof generation and verification beside Lighthouse BLS.</p>
+          <h2 id="slow-title">Key creation and aggregate proofs</h2>
+          <p>Long-lived key generation plus full LeanVM proof generation and verification beside Lighthouse BLS.</p>
         </div>
         <span class="stamp" id="slow-stamp">Loading…</span>
       </div>
@@ -277,7 +277,11 @@
         </div>
         <div>
           <dt>Serialized artifact sizes</dt>
-          <dd>Storage or wire-encoding sizes, not in-memory object sizes. The LeanVM secret key is generated for the benchmark’s 16 signing slots.</dd>
+          <dd>Storage or wire-encoding sizes, not in-memory object sizes. The key-generation row uses a LeanVM secret key covering 2<sup>20</sup> signing slots.</dd>
+        </div>
+        <div>
+          <dt>Key creation</dt>
+          <dd>Generates a new LeanVM XMSS key covering 1,048,576 signing slots, or a new Lighthouse BLS secret key. BLS keys do not precompute a slot-lifetime Merkle tree.</dd>
         </div>
         <div>
           <dt>Suite peak RSS</dt>
@@ -309,11 +313,13 @@
 
     function operationLabel(workload, inputSize) {
       const label = humanLabel(workload);
+      if (workload === "key_creation" && inputSize != null) {
+        return `${label} (LeanVM signing slots = ${Number(inputSize).toLocaleString()})`;
+      }
       return inputSize == null ? label : `${label} (size = ${inputSize})`;
     }
 
     function artifactLabel(artifact) {
-      if (artifact === "secret_key_16_slots") return "Stored secret key (16 signing slots)";
       if (artifact === "public_key") return "Public key";
       if (artifact === "raw_signature") return "Raw signature";
       return humanLabel(artifact);
@@ -492,7 +498,20 @@
           bytes(result.lighthouse_artifact_bytes),
         ],
       }));
-      addGroupedTables(target, ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM proof size", "BLS signature size"], rows);
+      const keyCreationRows = rows.filter(row => row.workload === "key_creation");
+      if (keyCreationRows.length > 0) {
+        target.append(node("h3", "Key creation", "subtable-title"));
+        addTable(
+          target,
+          ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM stored key", "BLS stored key"],
+          keyCreationRows.map(row => row.cells),
+        );
+      }
+      addGroupedTables(
+        target,
+        ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM proof size", "BLS signature size"],
+        rows.filter(row => row.workload !== "key_creation"),
+      );
       document.getElementById("slow-stamp").textContent = new Date(data.measured_at).toLocaleString();
     }
 

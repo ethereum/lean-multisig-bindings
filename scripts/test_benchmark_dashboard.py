@@ -58,12 +58,13 @@ class DashboardBuilderTests(unittest.TestCase):
 
     def test_dashboard_names_the_slow_section_by_what_it_measures(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
-        self.assertIn("Aggregate proof generation and verification", html)
+        self.assertIn("Key creation and aggregate proofs", html)
         self.assertNotIn("Proof-backed operations", html)
 
     def test_dashboard_describes_fast_operations_without_tooling_jargon(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
-        self.assertIn("Key and raw-signature operations without aggregation.", html)
+        self.assertIn("Raw signature operations without aggregation.", html)
+        self.assertNotIn("Key and raw-signature operations", html)
         self.assertNotIn("Native operations measured with Criterion.", html)
 
     def test_dashboard_metadata_wraps_and_omits_secondary_details(self):
@@ -96,7 +97,11 @@ class DashboardBuilderTests(unittest.TestCase):
     def test_dashboard_labels_proof_and_signature_sizes_explicitly(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
         self.assertIn("Serialized artifact sizes", html)
-        self.assertIn("Stored secret key (16 signing slots)", html)
+        self.assertIn("LeanVM signing slots = ${Number(inputSize).toLocaleString()}", html)
+        self.assertIn("LeanVM stored key", html)
+        self.assertIn("BLS stored key", html)
+        self.assertIn("1,048,576 signing slots", html)
+        self.assertNotIn("secret_key_16_slots", html)
         self.assertIn("Raw signature", html)
         self.assertIn("LeanVM proof size", html)
         self.assertIn("BLS signature size", html)
@@ -141,8 +146,6 @@ class DashboardBuilderTests(unittest.TestCase):
                 "\n".join(
                     [
                         "Compiling dependencies",
-                        "artifact-size secret_key_16_slots/lean 788",
-                        "artifact-size secret_key_16_slots/lighthouse 32",
                         "artifact-size public_key/lean 32",
                         "artifact-size public_key/lighthouse 48",
                         "artifact-size raw_signature/lean 1214",
@@ -152,8 +155,6 @@ class DashboardBuilderTests(unittest.TestCase):
                 encoding="utf-8",
             )
             for name, median, deviation in (
-                ("key_creation/lean", 5_937_262, 658_840),
-                ("key_creation/lighthouse", 843, 8),
                 ("independent_signatures_verify/lean/8", 12_000, 200),
                 ("independent_signatures_verify/lighthouse/8", 10_000, 100),
             ):
@@ -223,22 +224,6 @@ class DashboardBuilderTests(unittest.TestCase):
                 sorted(
                     [
                     {
-                        "name": "key_creation/lean",
-                        "workload": "key_creation",
-                        "implementation": "lean",
-                        "input_size": None,
-                        "median_ns": 5_937_262,
-                        "deviation_ns": 658_840,
-                    },
-                    {
-                        "name": "key_creation/lighthouse",
-                        "workload": "key_creation",
-                        "implementation": "lighthouse",
-                        "input_size": None,
-                        "median_ns": 843,
-                        "deviation_ns": 8,
-                    },
-                    {
                         "name": "independent_signatures_verify/lean/8",
                         "workload": "independent_signatures_verify",
                         "implementation": "lean",
@@ -261,8 +246,6 @@ class DashboardBuilderTests(unittest.TestCase):
             self.assertEqual(
                 data["artifacts"],
                 [
-                    {"artifact": "secret_key_16_slots", "implementation": "lean", "bytes": 788},
-                    {"artifact": "secret_key_16_slots", "implementation": "lighthouse", "bytes": 32},
                     {"artifact": "public_key", "implementation": "lean", "bytes": 32},
                     {"artifact": "public_key", "implementation": "lighthouse", "bytes": 48},
                     {"artifact": "raw_signature", "implementation": "lean", "bytes": 1214},
@@ -331,6 +314,23 @@ class DashboardBuilderTests(unittest.TestCase):
                 "lean_artifact_bytes": 178_574,
                 "lighthouse_artifact_bytes": 96,
             }
+            key_creation = {
+                "workload": "key_creation",
+                "input_size": 1_048_576,
+                "lean": {
+                    "samples_ns": [31_000_000_000, 30_900_000_000, 31_100_000_000],
+                    "median_ns": 31_000_000_000,
+                    "operations_per_second": 1 / 31,
+                },
+                "lighthouse": {
+                    "samples_ns": [446, 447, 445],
+                    "median_ns": 446,
+                    "operations_per_second": 1_000_000_000 / 446,
+                },
+                "lean_over_lighthouse": 31_000_000_000 / 446,
+                "lean_artifact_bytes": 40_212,
+                "lighthouse_artifact_bytes": 32,
+            }
             supplemental = {
                 "workload": "lighthouse_signature_sets_verify",
                 "input_size": 512,
@@ -346,7 +346,7 @@ class DashboardBuilderTests(unittest.TestCase):
                         "lighthouse_revision": "deadbeef",
                         "samples": 3,
                         "proof_warmup": True,
-                        "comparisons": [comparison],
+                        "comparisons": [key_creation, comparison],
                         "supplemental": [supplemental],
                     }
                 ),
@@ -366,6 +366,7 @@ class DashboardBuilderTests(unittest.TestCase):
                         "runner_image_version=20260823.1",
                         "suite=slow",
                         "samples=3",
+                        "key_creation_slots=1048576",
                         "same_sizes=1,8,16,32,64,128,256,512",
                         "distinct_sizes=1,8,16",
                         "proof_warmup=enabled",
@@ -405,7 +406,7 @@ class DashboardBuilderTests(unittest.TestCase):
             self.assertEqual(data["samples"], 3)
             self.assertTrue(data["proof_warmup"])
             self.assertEqual(data["peak_rss_bytes"], 4_600_824 * 1024)
-            self.assertEqual(data["comparisons"], [comparison])
+            self.assertEqual(data["comparisons"], [key_creation, comparison])
             self.assertEqual(data["supplemental"], [supplemental])
             self.assertIn("4.39 GiB", stdout.getvalue())
 
