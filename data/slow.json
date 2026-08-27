@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "suite": "slow",
-  "measured_at": "2026-08-27T10:09:37Z",
+  "measured_at": "2026-08-27T12:42:06Z",
   "environment": {
-    "commit": "91343fe51ab78fc2c3fe27511916d4c7334331d9",
+    "commit": "0fd9d95ac3625bde8a4ae053473440085843dce3",
     "runner_os": "Linux",
     "runner_arch": "X64",
     "runner_image_os": "unknown",
@@ -14,38 +14,39 @@
     "key_creation_slots": "1048576",
     "same_sizes": "1,8,16,256,512",
     "distinct_sizes": "1,8,16",
+    "mixed_claim_shape": "512x16",
     "proof_warmup": "enabled",
-    "measured_at": "2026-08-27T10:09:37Z",
+    "measured_at": "2026-08-27T12:42:06Z",
     "cpu": "AMD Ryzen 9 7940HS w/ Radeon 780M Graphics"
   },
   "lighthouse_revision": "e423a66763bb1bd780492d635123f208d80c3538",
   "samples": 3,
   "proof_warmup": true,
-  "peak_rss_bytes": 10710413312,
+  "peak_rss_bytes": 10620076032,
   "comparisons": [
     {
       "workload": "key_creation",
       "input_size": 1048576,
       "lean": {
         "samples_ns": [
-          62264220381,
-          62488896203,
-          62546318432
+          62231406228,
+          62385705825,
+          62423282519
         ],
-        "median_ns": 62488896203,
-        "operations_per_second": 0.01600284307713522
+        "median_ns": 62385705825,
+        "operations_per_second": 0.01602931291352429
       },
       "lighthouse": {
         "samples_ns": [
-          494,
+          487,
           495,
-          497
+          493
         ],
-        "median_ns": 495,
-        "operations_per_second": 2020202.0202020202
+        "median_ns": 493,
+        "operations_per_second": 2028397.5659229208
       },
-      "lean_over_lighthouse": 126240194.34949495,
-      "lean_artifact_bytes": 40237,
+      "lean_over_lighthouse": 126543013.84381339,
+      "lean_artifact_bytes": 40235,
       "lighthouse_artifact_bytes": 32
     },
     {
@@ -53,23 +54,23 @@
       "input_size": 1,
       "lean": {
         "samples_ns": [
-          65573620,
-          65080086,
-          66748256
+          65876038,
+          65669473,
+          65797738
         ],
-        "median_ns": 65573620,
-        "operations_per_second": 15.250034998830323
+        "median_ns": 65797738,
+        "operations_per_second": 15.198090852302553
       },
       "lighthouse": {
         "samples_ns": [
-          1049,
-          1010,
-          1004
+          1004,
+          1008,
+          1009
         ],
-        "median_ns": 1010,
-        "operations_per_second": 990099.0099009901
+        "median_ns": 1008,
+        "operations_per_second": 992063.4920634921
       },
-      "lean_over_lighthouse": 64924.376237623765,
+      "lean_over_lighthouse": 65275.53373015873,
       "lean_artifact_bytes": 138114,
       "lighthouse_artifact_bytes": 96
     },
@@ -78,23 +79,23 @@
       "input_size": 1,
       "lean": {
         "samples_ns": [
-          24786176,
-          23290245,
-          23175857
+          22982700,
+          22861899,
+          22866397
         ],
-        "median_ns": 23290245,
-        "operations_per_second": 42.936431110965124
+        "median_ns": 22866397,
+        "operations_per_second": 43.732294160728514
       },
       "lighthouse": {
         "samples_ns": [
-          1085511,
-          1094481,
-          1046682
+          951219,
+          981791,
+          976882
         ],
-        "median_ns": 1085511,
-        "operations_per_second": 921.225118861071
+        "median_ns": 976882,
+        "operations_per_second": 1023.6650895399854
       },
-      "lean_over_lighthouse": 21.455558718428463,
+      "lean_over_lighthouse": 23.40753233246185,
       "lean_artifact_bytes": 138114,
       "lighthouse_artifact_bytes": 96
     },
@@ -103,23 +104,23 @@
       "input_size": 8,
       "lean": {
         "samples_ns": [
-          94440249,
-          94208996,
-          96568037
+          94401513,
+          93554092,
+          94215697
         ],
-        "median_ns": 94440249,
-        "operations_per_second": 10.588705669338081
+        "median_ns": 94215697,
+        "operations_per_second": 10.613942600244204
       },
       "lighthouse": {
         "samples_ns": [
-          7703,
-          7777,
-          8222
+          7698,
+          7770,
+          7741
         ],
-        "median_ns": 7777,
-        "operations_per_second": 128584.28700012858
+        "median_ns": 7741,
+        "operations_per_second": 129182.27619170649
       },
-      "lean_over_lighthouse": 12143.532081779607,
+      "lean_over_lighthouse": 12170.998191448134,
       "lean_artifact_bytes": 170704,
       "lighthouse_artifact_bytes": 96
     },
@@ -128,23 +129,23 @@
       "input_size": 8,
       "lean": {
         "samples_ns": [
-          26242291,
-          26227171,
-          26141137
+          25782692,
+          25820494,
+          27559599
         ],
-        "median_ns": 26227171,
-        "operations_per_second": 38.12839745468545
+        "median_ns": 25820494,
+        "operations_per_second": 38.72892594541375
       },
       "lighthouse": {
         "samples_ns": [
-          1006718,
-          1110575,
-          1097319
+          981842,
+          1102201,
+          879584
         ],
-        "median_ns": 1097319,
-        "operations_per_second": 911.3120250355639
+        "median_ns": 981842,
+        "operations_per_second": 1018.4938106131129
       },
-      "lean_over_lighthouse": 23.901136314964017,
+      "lean_over_lighthouse": 26.298013325973017,
       "lean_artifact_bytes": 170704,
       "lighthouse_artifact_bytes": 96
     },
@@ -153,24 +154,24 @@
       "input_size": 16,
       "lean": {
         "samples_ns": [
-          101003519,
-          99051025,
-          100380518
+          99054546,
+          98946911,
+          100459813
         ],
-        "median_ns": 100380518,
-        "operations_per_second": 9.96209244506987
+        "median_ns": 99054546,
+        "operations_per_second": 10.095447815186594
       },
       "lighthouse": {
         "samples_ns": [
-          15354,
-          15385,
-          15385
+          15349,
+          15438,
+          15347
         ],
-        "median_ns": 15385,
-        "operations_per_second": 64998.375040623985
+        "median_ns": 15349,
+        "operations_per_second": 65150.8241579256
       },
-      "lean_over_lighthouse": 6524.570555736106,
-      "lean_artifact_bytes": 183538,
+      "lean_over_lighthouse": 6453.485308489152,
+      "lean_artifact_bytes": 183415,
       "lighthouse_artifact_bytes": 96
     },
     {
@@ -178,23 +179,23 @@
       "input_size": 16,
       "lean": {
         "samples_ns": [
-          26395553,
-          26357751,
-          26283188
+          26265364,
+          26114607,
+          26231060
         ],
-        "median_ns": 26357751,
-        "operations_per_second": 37.93950401914033
+        "median_ns": 26231060,
+        "operations_per_second": 38.12274456312478
       },
       "lighthouse": {
         "samples_ns": [
-          958710,
-          958245,
-          936298
+          934341,
+          1020225,
+          935868
         ],
-        "median_ns": 958245,
-        "operations_per_second": 1043.5744512102854
+        "median_ns": 935868,
+        "operations_per_second": 1068.526758047075
       },
-      "lean_over_lighthouse": 27.506275534962352,
+      "lean_over_lighthouse": 28.028589501938306,
       "lean_artifact_bytes": 183439,
       "lighthouse_artifact_bytes": 96
     },
@@ -203,23 +204,23 @@
       "input_size": 256,
       "lean": {
         "samples_ns": [
-          873581764,
-          869962533,
-          872025476
+          869248716,
+          865203353,
+          877905803
         ],
-        "median_ns": 872025476,
-        "operations_per_second": 1.1467554876802706
+        "median_ns": 869248716,
+        "operations_per_second": 1.1504187254962825
       },
       "lighthouse": {
         "samples_ns": [
-          243802,
-          245265,
-          244370
+          244259,
+          247207,
+          244203
         ],
-        "median_ns": 244370,
-        "operations_per_second": 4092.1553382166385
+        "median_ns": 244259,
+        "operations_per_second": 4094.014959530662
       },
-      "lean_over_lighthouse": 3568.4637066743053,
+      "lean_over_lighthouse": 3558.71724685682,
       "lean_artifact_bytes": 239098,
       "lighthouse_artifact_bytes": 96
     },
@@ -228,23 +229,23 @@
       "input_size": 256,
       "lean": {
         "samples_ns": [
-          29531039,
-          29494769,
-          29251805
+          29211726,
+          28884862,
+          28839725
         ],
-        "median_ns": 29494769,
-        "operations_per_second": 33.90431706720605
+        "median_ns": 28884862,
+        "operations_per_second": 34.62021040640596
       },
       "lighthouse": {
         "samples_ns": [
-          1190514,
-          1172241,
-          1077959
+          1052750,
+          1177059,
+          1071498
         ],
-        "median_ns": 1172241,
-        "operations_per_second": 853.0669034780391
+        "median_ns": 1071498,
+        "operations_per_second": 933.2728572521834
       },
-      "lean_over_lighthouse": 25.161011259630058,
+      "lean_over_lighthouse": 26.957457690075017,
       "lean_artifact_bytes": 239098,
       "lighthouse_artifact_bytes": 96
     },
@@ -253,23 +254,23 @@
       "input_size": 512,
       "lean": {
         "samples_ns": [
-          1754075949,
-          1747541149,
-          1750967116
+          1749363185,
+          1754452332,
+          1785977331
         ],
-        "median_ns": 1750967116,
-        "operations_per_second": 0.5711129528716975
+        "median_ns": 1754452332,
+        "operations_per_second": 0.5699784381488684
       },
       "lighthouse": {
         "samples_ns": [
-          486050,
-          490881,
-          485208
+          486312,
+          490182,
+          486835
         ],
-        "median_ns": 486050,
-        "operations_per_second": 2057.4015019030962
+        "median_ns": 486835,
+        "operations_per_second": 2054.0840325777726
       },
-      "lean_over_lighthouse": 3602.4423742413333,
+      "lean_over_lighthouse": 3603.792521080037,
       "lean_artifact_bytes": 252468,
       "lighthouse_artifact_bytes": 96
     },
@@ -278,23 +279,23 @@
       "input_size": 512,
       "lean": {
         "samples_ns": [
-          30929723,
-          30677981,
-          30368439
+          31764086,
+          30762741,
+          30811985
         ],
-        "median_ns": 30677981,
-        "operations_per_second": 32.59666925277775
+        "median_ns": 30811985,
+        "operations_per_second": 32.45490350589227
       },
       "lighthouse": {
         "samples_ns": [
-          1077662,
-          1105236,
-          1154319
+          1240182,
+          1225600,
+          1184883
         ],
-        "median_ns": 1105236,
-        "operations_per_second": 904.7841366006899
+        "median_ns": 1225600,
+        "operations_per_second": 815.9268929503917
       },
-      "lean_over_lighthouse": 27.756950551737365,
+      "lean_over_lighthouse": 25.140327186684072,
       "lean_artifact_bytes": 252468,
       "lighthouse_artifact_bytes": 96
     },
@@ -303,23 +304,23 @@
       "input_size": 1,
       "lean": {
         "samples_ns": [
-          506300571,
-          506139723,
-          510980550
+          508102257,
+          511659778,
+          509695574
         ],
-        "median_ns": 506300571,
-        "operations_per_second": 1.9751113415196997
+        "median_ns": 509695574,
+        "operations_per_second": 1.9619554318515624
       },
       "lighthouse": {
         "samples_ns": [
-          995,
           997,
-          993
+          1002,
+          999
         ],
-        "median_ns": 995,
-        "operations_per_second": 1005025.1256281408
+        "median_ns": 999,
+        "operations_per_second": 1001001.001001001
       },
-      "lean_over_lighthouse": 508844.79497487436,
+      "lean_over_lighthouse": 510205.7797797798,
       "lean_artifact_bytes": 218819,
       "lighthouse_artifact_bytes": 96
     },
@@ -328,23 +329,23 @@
       "input_size": 1,
       "lean": {
         "samples_ns": [
-          27932712,
-          28586362,
-          28440353
+          28259917,
+          27992837,
+          27793456
         ],
-        "median_ns": 28440353,
-        "operations_per_second": 35.161307596990795
+        "median_ns": 27992837,
+        "operations_per_second": 35.7234245317829
       },
       "lighthouse": {
         "samples_ns": [
-          972569,
-          1006140,
-          957920
+          847428,
+          914149,
+          883070
         ],
-        "median_ns": 972569,
-        "operations_per_second": 1028.2046826497658
+        "median_ns": 883070,
+        "operations_per_second": 1132.4130589873962
       },
-      "lean_over_lighthouse": 29.242504130812314,
+      "lean_over_lighthouse": 31.69945417690557,
       "lean_artifact_bytes": 218819,
       "lighthouse_artifact_bytes": 96
     },
@@ -353,23 +354,23 @@
       "input_size": 8,
       "lean": {
         "samples_ns": [
-          3779665922,
-          3778890723,
-          3785474977
+          3791148776,
+          3790046873,
+          3775558231
         ],
-        "median_ns": 3779665922,
-        "operations_per_second": 0.2645736476812355
+        "median_ns": 3790046873,
+        "operations_per_second": 0.2638489795796254
       },
       "lighthouse": {
         "samples_ns": [
-          7641,
-          7698,
-          7688
+          8316,
+          7707,
+          8085
         ],
-        "median_ns": 7688,
-        "operations_per_second": 130072.84079084288
+        "median_ns": 8085,
+        "operations_per_second": 123685.83797155226
       },
-      "lean_over_lighthouse": 491631.8837148803,
+      "lean_over_lighthouse": 468775.1234384663,
       "lean_artifact_bytes": 271240,
       "lighthouse_artifact_bytes": 96
     },
@@ -378,23 +379,23 @@
       "input_size": 8,
       "lean": {
         "samples_ns": [
-          35875009,
-          35430749,
-          35064939
+          35596891,
+          35194222,
+          37417261
         ],
-        "median_ns": 35430749,
-        "operations_per_second": 28.2240716954643
+        "median_ns": 35596891,
+        "operations_per_second": 28.09234098562147
       },
       "lighthouse": {
         "samples_ns": [
-          1081377,
-          1125095,
-          1172119
+          1216741,
+          1119641,
+          1139473
         ],
-        "median_ns": 1125095,
-        "operations_per_second": 888.8138334985046
+        "median_ns": 1139473,
+        "operations_per_second": 877.5986793895073
       },
-      "lean_over_lighthouse": 31.491339842413307,
+      "lean_over_lighthouse": 31.239784531972237,
       "lean_artifact_bytes": 271240,
       "lighthouse_artifact_bytes": 96
     },
@@ -403,23 +404,23 @@
       "input_size": 16,
       "lean": {
         "samples_ns": [
-          7372833322,
-          7372224849,
-          7405602121
+          7519360342,
+          7492951262,
+          7489279664
         ],
-        "median_ns": 7372833322,
-        "operations_per_second": 0.13563306755030966
+        "median_ns": 7492951262,
+        "operations_per_second": 0.13345876211305857
       },
       "lighthouse": {
         "samples_ns": [
-          15342,
-          15408,
-          15431
+          15442,
+          15469,
+          15459
         ],
-        "median_ns": 15408,
-        "operations_per_second": 64901.34994807892
+        "median_ns": 15459,
+        "operations_per_second": 64687.23720809884
       },
-      "lean_over_lighthouse": 478506.8355399792,
+      "lean_over_lighthouse": 484698.3156737176,
       "lean_artifact_bytes": 286978,
       "lighthouse_artifact_bytes": 96
     },
@@ -428,24 +429,76 @@
       "input_size": 16,
       "lean": {
         "samples_ns": [
-          40603799,
-          39093962,
-          40256856
+          40605636,
+          39339276,
+          40767796
         ],
-        "median_ns": 40256856,
-        "operations_per_second": 24.84048928212377
+        "median_ns": 40605636,
+        "operations_per_second": 24.627123190485182
       },
       "lighthouse": {
         "samples_ns": [
-          1104886,
-          1195219,
-          1102498
+          1115653,
+          1215905,
+          1118861
         ],
-        "median_ns": 1104886,
-        "operations_per_second": 905.0707493804791
+        "median_ns": 1118861,
+        "operations_per_second": 893.7660710311648
       },
-      "lean_over_lighthouse": 36.43530282762204,
+      "lean_over_lighthouse": 36.29193974944162,
       "lean_artifact_bytes": 286978,
+      "lighthouse_artifact_bytes": 96
+    },
+    {
+      "workload": "mixed_claim_aggregate",
+      "input_size": 512,
+      "claim_count": 16,
+      "lean": {
+        "samples_ns": [
+          9506197136,
+          9480168816,
+          9510993000
+        ],
+        "median_ns": 9506197136,
+        "operations_per_second": 0.10519453633177843
+      },
+      "lighthouse": {
+        "samples_ns": [
+          490329,
+          494769,
+          492977
+        ],
+        "median_ns": 492977,
+        "operations_per_second": 2028.4922014617314
+      },
+      "lean_over_lighthouse": 19283.246755933847,
+      "lean_artifact_bytes": 285734,
+      "lighthouse_artifact_bytes": 96
+    },
+    {
+      "workload": "mixed_claim_verify_conceptual",
+      "input_size": 512,
+      "claim_count": 16,
+      "lean": {
+        "samples_ns": [
+          43091889,
+          40700577,
+          41687153
+        ],
+        "median_ns": 41687153,
+        "operations_per_second": 23.98820567094136
+      },
+      "lighthouse": {
+        "samples_ns": [
+          1522908,
+          1418324,
+          1319921
+        ],
+        "median_ns": 1418324,
+        "operations_per_second": 705.0575185923668
+      },
+      "lean_over_lighthouse": 29.391840651360337,
+      "lean_artifact_bytes": 285435,
       "lighthouse_artifact_bytes": 96
     }
   ],

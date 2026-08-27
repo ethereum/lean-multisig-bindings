@@ -249,7 +249,7 @@
 
     <section class="explainer" id="explainer" aria-labelledby="explainer-title">
       <h2 id="explainer-title">What the benchmark names mean</h2>
-      <p>For same-claim rows, size is the number of signers. For distinct-claim rows, it is the number of signer-and-message pairs.</p>
+      <p>For same-claim rows, size is the number of signers. For distinct-claim rows, it is the number of signer-and-message pairs. Mixed-claim rows state both the total signature count and the number of claims.</p>
       <dl class="definitions">
         <div>
           <dt>Same-claim aggregation</dt>
@@ -266,6 +266,14 @@
         <div>
           <dt>Distinct-claim verification</dt>
           <dd>Checks the aggregate against every signer-and-message pair. The “conceptual” Lighthouse row uses its non-production aggregate-verify path.</dd>
+        </div>
+        <div>
+          <dt>Mixed-claim aggregation</dt>
+          <dd>Combines 512 signatures covering 16 different claims: 32 independent signers sign each claim. LeanVM automatically groups equal claims, proves each group, and merges the 16 results into one proof.</dd>
+        </div>
+        <div>
+          <dt>Mixed-claim verification</dt>
+          <dd>Checks the one LeanVM proof against all 16 claims and their 32 signers. For BLS, the benchmark groups the same public keys per claim and verifies one aggregate signature against the 16 message-and-key groups.</dd>
         </div>
         <div>
           <dt>Independent signature verification</dt>
@@ -311,10 +319,13 @@
       return String(value).replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
     }
 
-    function operationLabel(workload, inputSize) {
+    function operationLabel(workload, inputSize, claimCount) {
       const label = humanLabel(workload);
       if (workload === "key_creation" && inputSize != null) {
         return `${label} (LeanVM signing slots = ${Number(inputSize).toLocaleString()})`;
+      }
+      if (workload.startsWith("mixed_claim_") && inputSize != null && claimCount != null) {
+        return `${label} (${Number(inputSize).toLocaleString()} signatures / ${Number(claimCount).toLocaleString()} claims)`;
       }
       return inputSize == null ? label : `${label} (size = ${inputSize})`;
     }
@@ -389,6 +400,8 @@
       "Basic operations",
       "Same-claim aggregation",
       "Same-claim verification",
+      "Mixed-claim aggregation",
+      "Mixed-claim verification",
       "Distinct-claim aggregation",
       "Distinct-claim verification",
       "Independent signature verification",
@@ -397,6 +410,8 @@
     function benchmarkGroup(workload) {
       if (workload === "same_claim_aggregate") return "Same-claim aggregation";
       if (workload === "same_claim_verify") return "Same-claim verification";
+      if (workload === "mixed_claim_aggregate") return "Mixed-claim aggregation";
+      if (workload === "mixed_claim_verify_conceptual") return "Mixed-claim verification";
       if (workload === "distinct_claim_aggregate") return "Distinct-claim aggregation";
       if (workload === "independent_signatures_verify") return "Independent signature verification";
       if (workload === "distinct_claim_verify"
@@ -454,7 +469,7 @@
       const groups = new Map();
       for (const result of data.benchmarks) {
         const key = `${result.workload}\u0000${result.input_size ?? ""}`;
-        if (!groups.has(key)) groups.set(key, { workload: result.workload, inputSize: result.input_size });
+        if (!groups.has(key)) groups.set(key, { workload: result.workload, inputSize: result.input_size, claimCount: result.claim_count });
         groups.get(key)[result.implementation] = result;
       }
       const rows = Array.from(groups.values())
@@ -465,7 +480,7 @@
           return {
             workload: group.workload,
             cells: [
-              operationLabel(group.workload, group.inputSize),
+              operationLabel(group.workload, group.inputSize, group.claimCount),
               duration(lean),
               duration(lighthouse),
               ratio(lean, lighthouse),
@@ -490,7 +505,7 @@
       const rows = data.comparisons.map(result => ({
         workload: result.workload,
         cells: [
-          operationLabel(result.workload, result.input_size),
+          operationLabel(result.workload, result.input_size, result.claim_count),
           duration(result.lean?.median_ns),
           duration(result.lighthouse?.median_ns),
           `${Number(result.lean_over_lighthouse).toLocaleString(undefined, { maximumFractionDigits: 2 })}×`,
