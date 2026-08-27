@@ -11,7 +11,7 @@ use std::{
 use lean_multisig_comparison::{
     BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
     KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MAX_DISTINCT_CLAIMS, MAX_SAME_CLAIM_SIGNERS,
-    MIXED_CLAIM_COUNT, MIXED_CLAIM_SIGNATURES,
+    MIXED_CLAIM_COUNTS, MIXED_CLAIM_SIGNATURES,
 };
 
 #[test]
@@ -82,7 +82,7 @@ fn comparison_report_records_a_mixed_claim_shape() {
         1,
     )
     .unwrap()
-    .with_claim_count(MIXED_CLAIM_COUNT)
+    .with_claim_count(MIXED_CLAIM_COUNTS[1])
     .unwrap();
 
     assert_eq!(report.input_size, 512);
@@ -185,21 +185,26 @@ fn config_defaults_to_practical_sizes_and_three_samples() {
     assert_eq!(config.samples, 3);
     assert_eq!(config.same_sizes, vec![1, 8, 16]);
     assert_eq!(config.distinct_sizes, vec![1, 8, 16]);
-    assert!(!config.mixed_claims_512x16);
+    assert!(config.mixed_claim_counts.is_empty());
     assert!(!config.warmup_proofs);
 }
 
 #[test]
-fn config_accepts_the_fixed_mixed_claim_shape() {
-    let config = RunConfig::parse_from(["slow-comparison", "--mixed-claims-512x16"]).unwrap();
+fn config_accepts_mixed_claim_counts() {
+    let config =
+        RunConfig::parse_from(["slow-comparison", "--mixed-claim-counts", "8,16"]).unwrap();
 
-    assert!(config.mixed_claims_512x16);
+    assert_eq!(config.mixed_claim_counts, vec![8, 16]);
     assert!(RunConfig::parse_from([
         "slow-comparison",
-        "--mixed-claims-512x16",
-        "--mixed-claims-512x16",
+        "--mixed-claim-counts",
+        "8",
+        "--mixed-claim-counts",
+        "16",
     ])
     .is_err());
+    assert!(RunConfig::parse_from(["slow-comparison", "--mixed-claim-counts", "1,16",]).is_err());
+    assert!(RunConfig::parse_from(["slow-comparison", "--mixed-claim-counts", "3,16",]).is_err());
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use lean_multisig_comparison::{
     deterministic_key_material, BlsFixtureSet, FixtureSet, MAX_DISTINCT_CLAIMS,
-    MAX_SAME_CLAIM_SIGNERS, MIXED_CLAIM_COUNT, MIXED_CLAIM_SIGNATURES,
+    MAX_SAME_CLAIM_SIGNERS, MIXED_CLAIM_COUNTS, MIXED_CLAIM_SIGNATURES,
 };
 
 #[test]
@@ -104,17 +104,23 @@ fn mixed_claim_fixtures_validate_the_requested_shape() {
     assert!(FixtureSet::mixed_claims(8, 9).is_err());
     assert!(FixtureSet::mixed_claims(8, MAX_DISTINCT_CLAIMS + 1).is_err());
     assert!(FixtureSet::mixed_claims(MAX_SAME_CLAIM_SIGNERS + 1, 1).is_err());
-    assert_eq!(MIXED_CLAIM_SIGNATURES / MIXED_CLAIM_COUNT, 32);
+    assert_eq!(MIXED_CLAIM_COUNTS, [8, 16]);
+    assert_eq!(MIXED_CLAIM_SIGNATURES / MIXED_CLAIM_COUNTS[0], 64);
+    assert_eq!(MIXED_CLAIM_SIGNATURES / MIXED_CLAIM_COUNTS[1], 32);
 }
 
 #[test]
-#[ignore = "validates and groups 512 XMSS fixtures and is intentionally slow"]
-fn configured_mixed_claim_fixture_has_32_signers_per_claim() {
-    let fixtures = FixtureSet::mixed_claims(MIXED_CLAIM_SIGNATURES, MIXED_CLAIM_COUNT).unwrap();
-    let groups = fixtures.lean_claim_groups();
+#[ignore = "validates and groups two 512-signature XMSS fixtures and is intentionally slow"]
+fn configured_mixed_claim_fixtures_have_even_signer_groups() {
+    for claim_count in MIXED_CLAIM_COUNTS {
+        let fixtures = FixtureSet::mixed_claims(MIXED_CLAIM_SIGNATURES, claim_count).unwrap();
+        let groups = fixtures.lean_claim_groups();
 
-    assert_eq!(groups.len(), MIXED_CLAIM_COUNT);
-    assert!(groups.iter().all(|group| group.signers.len() == 32));
+        assert_eq!(groups.len(), claim_count);
+        assert!(groups
+            .iter()
+            .all(|group| group.signers.len() == MIXED_CLAIM_SIGNATURES / claim_count));
+    }
 }
 
 #[test]

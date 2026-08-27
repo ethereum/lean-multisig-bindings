@@ -210,7 +210,7 @@ jobs:
             echo "key_creation_slots=1048576"
             echo "same_sizes=$BENCH_SAME_SIZES"
             echo "distinct_sizes=$BENCH_DISTINCT_SIZES"
-            echo "mixed_claim_shape=512x16"
+            echo "mixed_claim_shapes=512x8,512x16"
             echo "proof_warmup=enabled"
             echo
             rustc -Vv
@@ -228,7 +228,7 @@ jobs:
             --samples "$BENCH_SAMPLES" \
             --same-sizes "$BENCH_SAME_SIZES" \
             --distinct-sizes "$BENCH_DISTINCT_SIZES" \
-            --mixed-claims-512x16 \
+            --mixed-claim-counts 8,16 \
             --warmup-proofs \
             --json benchmark-artifacts/slow/full.json 2>&1 \
             | tee benchmark-artifacts/slow/slow-output.txt

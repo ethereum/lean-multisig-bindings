@@ -269,11 +269,11 @@
         </div>
         <div>
           <dt>Mixed-claim aggregation</dt>
-          <dd>Combines 512 signatures covering 16 different claims: 32 independent signers sign each claim. LeanVM automatically groups equal claims, proves each group, and merges the 16 results into one proof.</dd>
+          <dd>Combines 512 signatures covering either 8 claims (64 signers per claim) or 16 claims (32 signers per claim). LeanVM automatically groups equal claims, proves each group, and merges the results into one proof.</dd>
         </div>
         <div>
           <dt>Mixed-claim verification</dt>
-          <dd>Checks the one LeanVM proof against all 16 claims and their 32 signers. For BLS, the benchmark groups the same public keys per claim and verifies one aggregate signature against the 16 message-and-key groups.</dd>
+          <dd>Checks one LeanVM proof against every claim and its signer set. For BLS, the benchmark groups the same public keys per claim and verifies one aggregate signature against either 8 or 16 message-and-key groups.</dd>
         </div>
         <div>
           <dt>Independent signature verification</dt>
