@@ -17,16 +17,17 @@ Run the Criterion suite in release mode:
 cargo bench -p lean-multisig-comparison --bench comparison
 ```
 
-The fast suite compares paired key creation, signing, raw-signature
-serialization and deserialization, single-signature verification, and
+The fast suite compares paired signing, raw-signature serialization and
+deserialization, single-signature verification, and
 verification of `1,8,16` independent signer-and-message tuples. For the last
 workload, LeanVM verifies every raw XMSS signature and Lighthouse uses its
 production batch-verification API. Aggregate proof generation and verification
 are measured by the slow paired comparison below.
 
-## Slow paired comparison
+## Large-key and slow paired comparison
 
-The practical default runs three samples at sizes `1,8,16` on both axes:
+The practical default generates three LeanVM keys covering `2^20` signing slots
+and runs three proof samples at sizes `1,8,16` on both axes:
 
 ```bash
 cargo run --release -p lean-multisig-comparison --bin slow_comparison
@@ -41,8 +42,11 @@ cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
   --distinct-sizes 1,8,16
 ```
 
-The large Lean proof sweep can take substantial time and memory. It is never
-part of the default run. `--same-sizes` accepts unique positive sizes through
+The `2^20`-slot key generation is always part of this runner. It reports the
+generation median and serialized key size beside Lighthouse BLS key generation;
+BLS keys do not precompute a slot-lifetime Merkle tree. The large LeanVM proof
+sweep can take substantial time and memory. It is never part of the default
+run. `--same-sizes` accepts unique positive sizes through
 512; `--distinct-sizes` accepts unique positive sizes through 16. Each option
 defaults independently to `1,8,16`. The backward-compatible `--sizes` option
 sets both axes, remains capped at 16, and cannot be combined with either
@@ -120,7 +124,8 @@ Benchmark execution, proof/signature validation, report conversion, and
 artifact failures still fail their jobs. Each environment sidecar records the
 commit, runner OS and architecture, runner image name and version, CPU, kernel,
 Rust and Cargo versions, the manifest-derived Lighthouse revision, suite,
-sample count, applicable size axes, and proof-warmup mode.
+sample count, the fixed `2^20` key-creation slot count, applicable size axes,
+and proof-warmup mode.
 
 ## Current-results dashboard
 
@@ -161,10 +166,11 @@ The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It show
 only the newest result for each suite: LeanVM and Lighthouse timings and ratios
 grouped by operation family; serialized secret-key, public-key, and raw-signature
 sizes; LeanVM proof and aggregate BLS signature sizes; overall slow-suite peak
-RSS; and the measurement environment. The LeanVM secret-key row uses the same 16
-signing slots as the key-creation benchmark. A short glossary defines the
-aggregation and verification workloads. There are no commit-over-commit plots.
-The first publication removes the old nested `dev/bench` pages.
+RSS; and the measurement environment. The LeanVM key-creation row uses
+1,048,576 signing slots and reports its serialized key size. A short glossary
+defines the aggregation and verification workloads. There are no
+commit-over-commit plots. The first publication removes the old nested
+`dev/bench` pages.
 
 ### One-time Pages setup
 

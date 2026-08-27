@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
 pub const MAX_SAME_CLAIM_SIGNERS: usize = 512;
+pub const KEY_CREATION_SLOTS: usize = 1 << 20;
 pub const LIGHTHOUSE_REVISION: &str = "e423a66763bb1bd780492d635123f208d80c3538";
 
 /// Returns deterministic, nonzero 32-byte key material for a fixture signer.
@@ -94,10 +95,17 @@ impl ComparisonReport {
         let workload = workload.into();
         ensure!(!workload.is_empty(), "workload must not be empty");
         ensure!(input_size > 0, "input size must be greater than zero");
-        ensure!(
-            input_size <= MAX_SAME_CLAIM_SIGNERS,
-            "input size {input_size} exceeds maximum {MAX_SAME_CLAIM_SIGNERS}"
-        );
+        if workload == "key_creation" {
+            ensure!(
+                input_size == KEY_CREATION_SLOTS,
+                "key_creation must measure exactly {KEY_CREATION_SLOTS} slots"
+            );
+        } else {
+            ensure!(
+                input_size <= MAX_SAME_CLAIM_SIGNERS,
+                "input size {input_size} exceeds maximum {MAX_SAME_CLAIM_SIGNERS}"
+            );
+        }
         ensure!(lean.median_ns > 0, "lean median must be greater than zero");
         ensure!(
             lean_artifact_bytes > 0,

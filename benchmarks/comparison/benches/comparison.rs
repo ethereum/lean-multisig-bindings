@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use lean_multisig_comparison::{FixtureSet, MAX_DISTINCT_CLAIMS};
+use lean_multisig_comparison::FixtureSet;
 
 const INDEPENDENT_SIGNATURE_SIZES: [usize; 3] = [1, 8, 16];
 
@@ -36,11 +36,6 @@ fn single_operations(criterion: &mut Criterion) {
     assert!(bls_signature.verify(bls_public_key, bls_message));
 
     let artifact_sizes = [
-        ("secret_key_16_slots/lean", lean_key.to_bytes().len()),
-        (
-            "secret_key_16_slots/lighthouse",
-            bls_key.serialize().as_ref().len(),
-        ),
         ("public_key/lean", lean_public_key.len()),
         ("public_key/lighthouse", bls_public_key.serialize().len()),
         ("raw_signature/lean", lean_signature.to_bytes().len()),
@@ -49,25 +44,6 @@ fn single_operations(criterion: &mut Criterion) {
     for (artifact, size) in artifact_sizes {
         println!("artifact-size {artifact} {size}");
     }
-
-    // RangeInclusive counts both endpoints, so 16 active slots end at slot 15.
-    let key_creation_last_slot = MAX_DISTINCT_CLAIMS
-        .checked_sub(1)
-        .and_then(|slot| u32::try_from(slot).ok())
-        .expect("the fixture slot count should fit in a nonempty u32 range");
-    let mut group = criterion.benchmark_group("key_creation");
-    group.bench_function("lean", |bencher| {
-        bencher.iter(|| {
-            black_box(
-                lean_multisig::SecretKey::generate(black_box(0..=key_creation_last_slot))
-                    .expect("random XMSS key generation should succeed"),
-            )
-        });
-    });
-    group.bench_function("lighthouse", |bencher| {
-        bencher.iter(|| black_box(lighthouse_bls::SecretKey::random()));
-    });
-    group.finish();
 
     let mut group = criterion.benchmark_group("sign");
     group.bench_function("lean", |bencher| {

@@ -7,7 +7,7 @@ use std::{
 use anyhow::{bail, ensure, Context, Result};
 use lean_multisig_comparison::{
     ensure_distinct_output_paths, BenchmarkReport, ComparisonReport, FixtureSet, RunConfig,
-    SampleSummary, LIGHTHOUSE_REVISION,
+    SampleSummary, KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION,
 };
 
 const SEMANTIC_WARNING: &str = "WARNING: leanMultisig aggregation generates zkVM proofs, while Lighthouse BLS aggregation combines elliptic-curve points; these operations do not have identical security semantics.";
@@ -25,7 +25,8 @@ fn run(config: RunConfig) -> Result<()> {
     lean_multisig::setup();
 
     let mut comparisons =
-        Vec::with_capacity((config.same_sizes.len() + config.distinct_sizes.len()) * 2);
+        Vec::with_capacity(1 + (config.same_sizes.len() + config.distinct_sizes.len()) * 2);
+    comparisons.push(measure_key_creation(config.samples)?);
 
     for &size in &config.same_sizes {
         let same_claim = FixtureSet::same_claim(size).with_context(|| {
@@ -113,6 +114,79 @@ fn run(config: RunConfig) -> Result<()> {
     println!("{}", report.to_table());
 
     write_report_files(&report, &config)
+}
+
+fn measure_key_creation(samples: usize) -> Result<ComparisonReport> {
+    const WORKLOAD: &str = "key_creation";
+    let last_slot = u32::try_from(KEY_CREATION_SLOTS - 1)
+        .context("the key-creation slot count must fit in a u32 range")?;
+    let lighthouse_iterations =
+        calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
+            let (elapsed, key) =
+                time_last_value_batch(iterations, lighthouse_bls::SecretKey::random)?;
+            black_box(key.public_key());
+            Ok(elapsed)
+        })
+        .context("key_creation: Lighthouse calibration failed")?;
+
+    let mut lean_durations = Vec::with_capacity(samples);
+    let mut lighthouse_durations = Vec::with_capacity(samples);
+    let mut retained_lean = None;
+    let mut retained_lighthouse = None;
+    for_each_paired_sample(
+        samples,
+        |sample| {
+            let start = Instant::now();
+            let key = lean_multisig::SecretKey::generate(0..=last_slot).with_context(|| {
+                format!(
+                    "{WORKLOAD} ({KEY_CREATION_SLOTS} slots, sample {sample}): LeanVM key generation failed"
+                )
+            })?;
+            let duration = start.elapsed();
+            black_box(key.public_key());
+            lean_durations.push(duration);
+            retained_lean.get_or_insert(key);
+            Ok(())
+        },
+        |sample| {
+            let key = record_batched_sample(
+                &mut lighthouse_durations,
+                lighthouse_iterations,
+                |iterations| {
+                    time_last_value_batch(iterations, lighthouse_bls::SecretKey::random)
+                },
+                |key| {
+                    black_box(key.public_key());
+                    Ok(())
+                },
+            )
+            .with_context(|| {
+                format!(
+                    "{WORKLOAD} ({KEY_CREATION_SLOTS} slots, sample {sample}): Lighthouse key generation failed"
+                )
+            })?;
+            retained_lighthouse.get_or_insert(key);
+            Ok(())
+        },
+    )?;
+
+    let lean_key = retained_lean.context("key_creation retained no LeanVM secret key")?;
+    let lighthouse_key =
+        retained_lighthouse.context("key_creation retained no Lighthouse secret key")?;
+    ComparisonReport::new(
+        WORKLOAD,
+        KEY_CREATION_SLOTS,
+        summarize(lean_durations, WORKLOAD, KEY_CREATION_SLOTS, "LeanVM")?,
+        summarize(
+            lighthouse_durations,
+            WORKLOAD,
+            KEY_CREATION_SLOTS,
+            "Lighthouse",
+        )?,
+        lean_key.to_bytes().len(),
+        lighthouse_key.serialize().as_ref().len(),
+    )
+    .context("failed to assemble key_creation report")
 }
 
 fn write_report_files(report: &BenchmarkReport, config: &RunConfig) -> Result<()> {

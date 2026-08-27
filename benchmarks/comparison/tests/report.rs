@@ -10,7 +10,7 @@ use std::{
 
 use lean_multisig_comparison::{
     BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
-    LIGHTHOUSE_REVISION, MAX_SAME_CLAIM_SIGNERS,
+    KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MAX_SAME_CLAIM_SIGNERS,
 };
 
 #[test]
@@ -66,6 +66,22 @@ fn comparison_report_accepts_the_expanded_same_claim_limit() {
         1,
     )
     .is_ok());
+}
+
+#[test]
+fn comparison_report_accepts_only_the_realistic_key_creation_size() {
+    let summary = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
+
+    assert!(ComparisonReport::new(
+        "key_creation",
+        KEY_CREATION_SLOTS,
+        summary.clone(),
+        summary.clone(),
+        1,
+        1,
+    )
+    .is_ok());
+    assert!(ComparisonReport::new("key_creation", 16, summary.clone(), summary, 1, 1,).is_err());
 }
 
 #[test]
