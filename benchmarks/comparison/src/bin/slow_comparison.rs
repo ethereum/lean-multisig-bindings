@@ -7,13 +7,14 @@ use std::{
 use anyhow::{bail, ensure, Context, Result};
 use lean_multisig_comparison::{
     ensure_distinct_output_paths, BenchmarkReport, ComparisonReport, FixtureSet, RunConfig,
-    SampleSummary, KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION,
+    SampleSummary, KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MIXED_CLAIM_COUNT,
+    MIXED_CLAIM_SIGNATURES,
 };
 
 const SEMANTIC_WARNING: &str = "WARNING: leanMultisig aggregation generates zkVM proofs, while Lighthouse BLS aggregation combines elliptic-curve points; these operations do not have identical security semantics.";
 const MIN_LIGHTHOUSE_BATCH_DURATION: Duration = Duration::from_millis(10);
 const DISTINCT_CLAIM_VERIFY_WORKLOAD: &str = "distinct_claim_verify_conceptual";
-const DISTINCT_VERIFY_NOTE: &str = "NOTE: distinct_claim_verify_conceptual uses Lighthouse aggregate_verify, an EF-test-only non-production path. The fast independent_signatures_verify workload compares production-oriented BLS batch verification with LeanVM verification of the same independent signer-and-message tuples.";
+const DISTINCT_VERIFY_NOTE: &str = "NOTE: distinct_claim_verify_conceptual and mixed_claim_verify_conceptual use Lighthouse aggregate_verify, an EF-test-only non-production path. Mixed-claim BLS verification includes aggregation of each claim's public keys. The fast independent_signatures_verify workload compares production-oriented BLS batch verification with LeanVM verification of the same independent signer-and-message tuples.";
 
 fn main() -> Result<()> {
     let config =
@@ -24,8 +25,10 @@ fn main() -> Result<()> {
 fn run(config: RunConfig) -> Result<()> {
     lean_multisig::setup();
 
-    let mut comparisons =
-        Vec::with_capacity(1 + (config.same_sizes.len() + config.distinct_sizes.len()) * 2);
+    let mixed_capacity = usize::from(config.mixed_claims_512x16) * 2;
+    let mut comparisons = Vec::with_capacity(
+        1 + (config.same_sizes.len() + config.distinct_sizes.len()) * 2 + mixed_capacity,
+    );
     comparisons.push(measure_key_creation(config.samples)?);
 
     for &size in &config.same_sizes {
@@ -92,6 +95,37 @@ fn run(config: RunConfig) -> Result<()> {
             &distinct_bls_public_keys,
             config.samples,
             size,
+        )?);
+    }
+
+    if config.mixed_claims_512x16 {
+        let mixed_claims = FixtureSet::mixed_claims(MIXED_CLAIM_SIGNATURES, MIXED_CLAIM_COUNT)
+            .with_context(|| {
+                format!(
+                    "failed to build mixed-claim fixtures for {} signatures across {} claims",
+                    MIXED_CLAIM_SIGNATURES, MIXED_CLAIM_COUNT
+                )
+            })?;
+        let mixed_expected = mixed_claims.lean_claim_groups();
+        let (mixed_bls_messages, mixed_bls_public_keys) =
+            mixed_claims.bls_grouped_claim_context()?;
+        let mixed_bls_public_keys = mixed_bls_public_keys.iter().collect::<Vec<_>>();
+
+        let (aggregate_row, lean_aggregate, bls_aggregate) = measure_mixed_claim_aggregate(
+            &mixed_claims,
+            &mixed_expected,
+            &mixed_bls_messages,
+            &mixed_bls_public_keys,
+            config.samples,
+            config.warmup_proofs,
+        )?;
+        comparisons.push(aggregate_row);
+        comparisons.push(measure_mixed_claim_verify(
+            &mixed_claims,
+            &lean_aggregate,
+            &bls_aggregate,
+            &mixed_expected,
+            config.samples,
         )?);
     }
 
@@ -510,6 +544,34 @@ fn measure_distinct_claim_aggregate(
     Ok((report, verification_lean, timed_lighthouse))
 }
 
+fn measure_mixed_claim_aggregate(
+    fixtures: &FixtureSet,
+    lean_expected: &[lean_multisig::ClaimSigners],
+    bls_messages: &[lighthouse_bls::Hash256],
+    bls_public_keys: &[&lighthouse_bls::PublicKey],
+    samples: usize,
+    warmup_proofs: bool,
+) -> Result<(
+    ComparisonReport,
+    lean_multisig::MultiClaimProof,
+    lighthouse_bls::AggregateSignature,
+)> {
+    let (mut report, lean_aggregate, bls_aggregate) = measure_distinct_claim_aggregate(
+        fixtures,
+        lean_expected,
+        bls_messages,
+        bls_public_keys,
+        samples,
+        MIXED_CLAIM_SIGNATURES,
+        warmup_proofs,
+    )?;
+    report.workload = "mixed_claim_aggregate".to_owned();
+    let report = report
+        .with_claim_count(MIXED_CLAIM_COUNT)
+        .context("failed to record the mixed-claim aggregation shape")?;
+    Ok((report, lean_aggregate, bls_aggregate))
+}
+
 fn measure_distinct_claim_verify(
     lean_aggregate: &lean_multisig::MultiClaimProof,
     bls_aggregate: &lighthouse_bls::AggregateSignature,
@@ -581,6 +643,84 @@ fn measure_distinct_claim_verify(
         bls_aggregate.serialize().len(),
     )
     .with_context(|| format!("failed to assemble {WORKLOAD} report for input size {size}"))
+}
+
+fn measure_mixed_claim_verify(
+    fixtures: &FixtureSet,
+    lean_aggregate: &lean_multisig::MultiClaimProof,
+    bls_aggregate: &lighthouse_bls::AggregateSignature,
+    lean_expected: &[lean_multisig::ClaimSigners],
+    samples: usize,
+) -> Result<ComparisonReport> {
+    const WORKLOAD: &str = "mixed_claim_verify_conceptual";
+    let lighthouse_iterations =
+        calibrate_batch_iterations(MIN_LIGHTHOUSE_BATCH_DURATION, |iterations| {
+            let (elapsed, all_valid) = time_bool_batch(iterations, || {
+                fixtures
+                    .verify_bls_grouped_claim_aggregate(black_box(bls_aggregate))
+                    .unwrap_or(false)
+            })?;
+            ensure!(
+                all_valid,
+                "{WORKLOAD}: Lighthouse calibration verification failed"
+            );
+            Ok(elapsed)
+        })
+        .with_context(|| format!("{WORKLOAD}: Lighthouse calibration failed"))?;
+
+    let mut lean_durations = Vec::with_capacity(samples);
+    let mut lighthouse_durations = Vec::with_capacity(samples);
+    for_each_paired_sample(
+        samples,
+        |sample| {
+            let start = Instant::now();
+            let result = lean_multisig::verify_claims(lean_aggregate, lean_expected);
+            let duration = start.elapsed();
+            result.with_context(|| {
+                format!("{WORKLOAD} (sample {sample}): Lean verification failed")
+            })?;
+            lean_durations.push(duration);
+            Ok(())
+        },
+        |sample| {
+            record_batched_sample(
+                &mut lighthouse_durations,
+                lighthouse_iterations,
+                |iterations| {
+                    time_bool_batch(iterations, || {
+                        fixtures
+                            .verify_bls_grouped_claim_aggregate(black_box(bls_aggregate))
+                            .unwrap_or(false)
+                    })
+                },
+                |all_valid| {
+                    ensure!(
+                        *all_valid,
+                        "{WORKLOAD} (sample {sample}): Lighthouse verification batch contained an invalid result"
+                    );
+                    Ok(())
+                },
+            )?;
+            Ok(())
+        },
+    )?;
+
+    ComparisonReport::new(
+        WORKLOAD,
+        MIXED_CLAIM_SIGNATURES,
+        summarize(lean_durations, WORKLOAD, MIXED_CLAIM_SIGNATURES, "Lean")?,
+        summarize(
+            lighthouse_durations,
+            WORKLOAD,
+            MIXED_CLAIM_SIGNATURES,
+            "Lighthouse",
+        )?,
+        lean_aggregate.to_bytes().len(),
+        bls_aggregate.serialize().len(),
+    )
+    .with_context(|| format!("failed to assemble {WORKLOAD} report"))?
+    .with_claim_count(MIXED_CLAIM_COUNT)
+    .context("failed to record the mixed-claim verification shape")
 }
 
 fn aggregate_bls(signatures: &[lighthouse_bls::Signature]) -> lighthouse_bls::AggregateSignature {

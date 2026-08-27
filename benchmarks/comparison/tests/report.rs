@@ -10,7 +10,8 @@ use std::{
 
 use lean_multisig_comparison::{
     BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
-    KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MAX_SAME_CLAIM_SIGNERS,
+    KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MAX_DISTINCT_CLAIMS, MAX_SAME_CLAIM_SIGNERS,
+    MIXED_CLAIM_COUNT, MIXED_CLAIM_SIGNATURES,
 };
 
 #[test]
@@ -66,6 +67,49 @@ fn comparison_report_accepts_the_expanded_same_claim_limit() {
         1,
     )
     .is_ok());
+}
+
+#[test]
+fn comparison_report_records_a_mixed_claim_shape() {
+    let summary = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
+
+    let report = ComparisonReport::new(
+        "mixed_claim_aggregate",
+        MIXED_CLAIM_SIGNATURES,
+        summary.clone(),
+        summary,
+        1,
+        1,
+    )
+    .unwrap()
+    .with_claim_count(MIXED_CLAIM_COUNT)
+    .unwrap();
+
+    assert_eq!(report.input_size, 512);
+    assert_eq!(report.claim_count, Some(16));
+    assert!(serde_json::to_string(&report)
+        .unwrap()
+        .contains("\"claim_count\":16"));
+}
+
+#[test]
+fn comparison_report_rejects_invalid_mixed_claim_shapes() {
+    let summary = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
+    let report = || {
+        ComparisonReport::new(
+            "mixed_claim_aggregate",
+            8,
+            summary.clone(),
+            summary.clone(),
+            1,
+            1,
+        )
+        .unwrap()
+    };
+
+    assert!(report().with_claim_count(1).is_err());
+    assert!(report().with_claim_count(3).is_err());
+    assert!(report().with_claim_count(MAX_DISTINCT_CLAIMS + 1).is_err());
 }
 
 #[test]
@@ -141,7 +185,21 @@ fn config_defaults_to_practical_sizes_and_three_samples() {
     assert_eq!(config.samples, 3);
     assert_eq!(config.same_sizes, vec![1, 8, 16]);
     assert_eq!(config.distinct_sizes, vec![1, 8, 16]);
+    assert!(!config.mixed_claims_512x16);
     assert!(!config.warmup_proofs);
+}
+
+#[test]
+fn config_accepts_the_fixed_mixed_claim_shape() {
+    let config = RunConfig::parse_from(["slow-comparison", "--mixed-claims-512x16"]).unwrap();
+
+    assert!(config.mixed_claims_512x16);
+    assert!(RunConfig::parse_from([
+        "slow-comparison",
+        "--mixed-claims-512x16",
+        "--mixed-claims-512x16",
+    ])
+    .is_err());
 }
 
 #[test]

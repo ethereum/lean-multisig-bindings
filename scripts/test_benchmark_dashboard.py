@@ -40,8 +40,9 @@ class DashboardBuilderTests(unittest.TestCase):
 
     def test_dashboard_folds_input_size_into_operation_names(self):
         html = DASHBOARD_PATH.read_text(encoding="utf-8")
-        self.assertIn("function operationLabel(workload, inputSize)", html)
+        self.assertIn("function operationLabel(workload, inputSize, claimCount)", html)
         self.assertIn("(size = ${inputSize})", html)
+        self.assertIn("signatures / ${Number(claimCount).toLocaleString()} claims", html)
         self.assertNotIn('["Operation", "Size"', html)
 
     def test_dashboard_explains_benchmark_terms_after_results(self):
@@ -52,6 +53,8 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn("same-claim aggregation", lowered)
         self.assertIn("same message", lowered)
         self.assertIn("distinct-claim aggregation", lowered)
+        self.assertIn("mixed-claim aggregation", lowered)
+        self.assertIn("32 independent signers sign each claim", lowered)
         self.assertIn("independent signature verification", lowered)
         self.assertIn("proof size", lowered)
         self.assertIn("peak rss", lowered)
@@ -314,6 +317,11 @@ class DashboardBuilderTests(unittest.TestCase):
                 "lean_artifact_bytes": 178_574,
                 "lighthouse_artifact_bytes": 96,
             }
+            mixed_comparison = {
+                **comparison,
+                "workload": "mixed_claim_aggregate",
+                "claim_count": 16,
+            }
             key_creation = {
                 "workload": "key_creation",
                 "input_size": 1_048_576,
@@ -346,7 +354,7 @@ class DashboardBuilderTests(unittest.TestCase):
                         "lighthouse_revision": "deadbeef",
                         "samples": 3,
                         "proof_warmup": True,
-                        "comparisons": [key_creation, comparison],
+                        "comparisons": [key_creation, comparison, mixed_comparison],
                         "supplemental": [supplemental],
                     }
                 ),
@@ -406,7 +414,9 @@ class DashboardBuilderTests(unittest.TestCase):
             self.assertEqual(data["samples"], 3)
             self.assertTrue(data["proof_warmup"])
             self.assertEqual(data["peak_rss_bytes"], 4_600_824 * 1024)
-            self.assertEqual(data["comparisons"], [key_creation, comparison])
+            self.assertEqual(
+                data["comparisons"], [key_creation, comparison, mixed_comparison]
+            )
             self.assertEqual(data["supplemental"], [supplemental])
             self.assertIn("4.39 GiB", stdout.getvalue())
 

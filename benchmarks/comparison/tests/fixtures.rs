@@ -1,6 +1,6 @@
 use lean_multisig_comparison::{
     deterministic_key_material, BlsFixtureSet, FixtureSet, MAX_DISTINCT_CLAIMS,
-    MAX_SAME_CLAIM_SIGNERS,
+    MAX_SAME_CLAIM_SIGNERS, MIXED_CLAIM_COUNT, MIXED_CLAIM_SIGNATURES,
 };
 
 #[test]
@@ -76,6 +76,45 @@ fn distinct_fixtures_use_distinct_messages_and_slots() {
         fixtures.lean_claims()[1].message()
     );
     assert_ne!(fixtures.bls_messages()[0], fixtures.bls_messages()[1]);
+}
+
+#[test]
+fn mixed_claim_fixtures_distribute_signers_evenly() {
+    let fixtures = FixtureSet::mixed_claims(8, 2).unwrap();
+    let groups = fixtures.lean_claim_groups();
+
+    assert_eq!(fixtures.claim_count(), 2);
+    assert_eq!(groups.len(), 2);
+    assert!(groups.iter().all(|group| group.signers.len() == 4));
+    assert_eq!(fixtures.lean_claims()[0], fixtures.lean_claims()[2]);
+    assert_ne!(fixtures.lean_claims()[0], fixtures.lean_claims()[1]);
+    assert_eq!(fixtures.bls_messages()[0], fixtures.bls_messages()[2]);
+    assert_ne!(fixtures.bls_messages()[0], fixtures.bls_messages()[1]);
+
+    let bls_aggregate = fixtures.bls_aggregate();
+    assert!(fixtures
+        .verify_bls_grouped_claim_aggregate(&bls_aggregate)
+        .unwrap());
+}
+
+#[test]
+fn mixed_claim_fixtures_validate_the_requested_shape() {
+    assert!(FixtureSet::mixed_claims(8, 0).is_err());
+    assert!(FixtureSet::mixed_claims(8, 3).is_err());
+    assert!(FixtureSet::mixed_claims(8, 9).is_err());
+    assert!(FixtureSet::mixed_claims(8, MAX_DISTINCT_CLAIMS + 1).is_err());
+    assert!(FixtureSet::mixed_claims(MAX_SAME_CLAIM_SIGNERS + 1, 1).is_err());
+    assert_eq!(MIXED_CLAIM_SIGNATURES / MIXED_CLAIM_COUNT, 32);
+}
+
+#[test]
+#[ignore = "validates and groups 512 XMSS fixtures and is intentionally slow"]
+fn configured_mixed_claim_fixture_has_32_signers_per_claim() {
+    let fixtures = FixtureSet::mixed_claims(MIXED_CLAIM_SIGNATURES, MIXED_CLAIM_COUNT).unwrap();
+    let groups = fixtures.lean_claim_groups();
+
+    assert_eq!(groups.len(), MIXED_CLAIM_COUNT);
+    assert!(groups.iter().all(|group| group.signers.len() == 32));
 }
 
 #[test]
