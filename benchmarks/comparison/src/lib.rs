@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
 pub const MAX_SAME_CLAIM_SIGNERS: usize = 512;
 pub const MIXED_CLAIM_SIGNATURES: usize = 512;
-pub const MIXED_CLAIM_COUNT: usize = 16;
+pub const MIXED_CLAIM_COUNTS: [usize; 2] = [8, 16];
 pub const KEY_CREATION_SLOTS: usize = 1 << 20;
 pub const LIGHTHOUSE_REVISION: &str = "e423a66763bb1bd780492d635123f208d80c3538";
 
@@ -328,7 +328,7 @@ pub struct RunConfig {
     pub samples: usize,
     pub same_sizes: Vec<usize>,
     pub distinct_sizes: Vec<usize>,
-    pub mixed_claims_512x16: bool,
+    pub mixed_claim_counts: Vec<usize>,
     pub json_path: Option<PathBuf>,
     pub action_json_path: Option<PathBuf>,
     pub warmup_proofs: bool,
@@ -347,7 +347,7 @@ impl RunConfig {
         let mut sizes = None;
         let mut same_sizes = None;
         let mut distinct_sizes = None;
-        let mut mixed_claims_512x16 = false;
+        let mut mixed_claim_counts = None;
         let mut json_path = None;
         let mut action_json_path = None;
         let mut warmup_proofs = false;
@@ -397,12 +397,27 @@ impl RunConfig {
                     distinct_sizes =
                         Some(parse_sizes("--distinct-sizes", text, MAX_DISTINCT_CLAIMS)?);
                 }
-                argument if argument == OsStr::new("--mixed-claims-512x16") => {
+                argument if argument == OsStr::new("--mixed-claim-counts") => {
                     ensure!(
-                        !mixed_claims_512x16,
-                        "--mixed-claims-512x16 may only be supplied once"
+                        mixed_claim_counts.is_none(),
+                        "--mixed-claim-counts may only be supplied once"
                     );
-                    mixed_claims_512x16 = true;
+                    let value = option_value("--mixed-claim-counts", arguments.next())?;
+                    let text = value
+                        .to_str()
+                        .context("--mixed-claim-counts value must be valid UTF-8")?;
+                    let parsed = parse_sizes("--mixed-claim-counts", text, MAX_DISTINCT_CLAIMS)?;
+                    ensure!(
+                        parsed.iter().all(|count| *count > 1),
+                        "--mixed-claim-counts entries must be greater than one"
+                    );
+                    ensure!(
+                        parsed
+                            .iter()
+                            .all(|count| MIXED_CLAIM_SIGNATURES.is_multiple_of(*count)),
+                        "--mixed-claim-counts entries must divide {MIXED_CLAIM_SIGNATURES} signatures evenly"
+                    );
+                    mixed_claim_counts = Some(parsed);
                 }
                 argument if argument == OsStr::new("--json") => {
                     ensure!(json_path.is_none(), "--json may only be supplied once");
@@ -425,7 +440,7 @@ impl RunConfig {
                 }
                 _ => {
                     return Err(anyhow!(
-                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --mixed-claims-512x16, --json, --action-json, or --warmup-proofs",
+                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --mixed-claim-counts, --json, --action-json, or --warmup-proofs",
                         argument.to_string_lossy()
                     ));
                 }
@@ -458,7 +473,7 @@ impl RunConfig {
             samples: samples.unwrap_or(3),
             same_sizes,
             distinct_sizes,
-            mixed_claims_512x16,
+            mixed_claim_counts: mixed_claim_counts.unwrap_or_default(),
             json_path,
             action_json_path,
             warmup_proofs,

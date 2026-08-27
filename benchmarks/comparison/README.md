@@ -40,16 +40,17 @@ cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
   --samples 3 \
   --same-sizes 32,64,128,256,512 \
   --distinct-sizes 1,8,16 \
-  --mixed-claims-512x16
+  --mixed-claim-counts 8,16
 ```
 
-`--mixed-claims-512x16` adds a fixed mixed workload with 512 raw signatures
-spread evenly across 16 claims (32 signers per claim). LeanVM's
-`merge_claims` groups equal claims, builds each per-claim aggregate, and merges
-the 16 results into one proof. The BLS side aggregates the same 512 signatures.
-For BLS verification, timing includes grouping and aggregating the 32 public
-keys for each claim before verifying the single aggregate against 16
-message-and-aggregated-key pairs.
+`--mixed-claim-counts 8,16` adds mixed workloads with 512 raw signatures
+spread evenly across 8 claims (64 signers per claim) and 16 claims (32 signers
+per claim). LeanVM's `merge_claims` groups equal claims, builds each per-claim
+aggregate, and merges the results into one proof. The BLS side aggregates the
+same 512 signatures. For BLS verification, timing includes grouping and
+aggregating each claim's public keys before verifying the single aggregate
+against the requested number of message-and-aggregated-key pairs. Counts must
+be unique integers from 2 through 16 that divide 512 evenly.
 
 The `2^20`-slot key generation is always part of this runner. It reports the
 generation median and serialized key size beside Lighthouse BLS key generation;
@@ -80,7 +81,7 @@ cargo build --release -p lean-multisig-comparison --bin slow_comparison
   --samples 3 \
   --same-sizes 1,8,16,256,512 \
   --distinct-sizes 1,8,16 \
-  --mixed-claims-512x16 \
+  --mixed-claim-counts 8,16 \
   --warmup-proofs \
   --json full.json
 ```
@@ -118,8 +119,8 @@ New commits rerun the suites while the label is present. Removing the label or
 closing the pull request cancels an active run. Fork pull requests are skipped
 because benchmark jobs execute repository code on that machine. Same-claim
 proofs use sizes `1,8,16,256,512`;
-distinct-claim proofs use `1,8,16`, and the mixed workload uses 512 signatures
-across 16 claims. Both place their current measurements in the
+distinct-claim proofs use `1,8,16`, and the mixed workloads use 512 signatures
+across 8 and 16 claims. Both place their current measurements in the
 job summary, and the normalized slow artifact includes overall peak RSS. Both
 jobs retain their raw output, normalized data, and environment metadata as
 workflow artifacts for 14 days. Fast dashboard data is normalized from
@@ -146,7 +147,7 @@ The trusted benchmark workflow has three modes:
   labeled `benchmark`. With one matching runner, the jobs execute one at a
   time. The slow suite uses three samples and proof warm-up, with same-claim
   sizes `1,8,16,256,512`, distinct-claim sizes `1,8,16`, and the fixed
-  512-signature/16-claim mixed workload. Fast artifacts are
+  512-signature mixed workloads with 8 and 16 claims. Fast artifacts are
   retained for 30 days and slow artifacts for 90 days.
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
   count (minimum 3) and independent same/distinct size lists. Manual slow runs
