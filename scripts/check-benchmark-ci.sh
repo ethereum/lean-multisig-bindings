@@ -101,6 +101,7 @@ require_literal "$pr_workflow" '--same-sizes 1,8,16,256,512' 'normal same-claim 
 require_literal "$pr_workflow" 'echo "distinct_sizes=1,8,16"' 'normal distinct-claim proof sizes'
 require_literal "$pr_workflow" 'echo "key_creation_slots=1048576"' '2^20-slot key metadata'
 require_literal "$pr_workflow" '--distinct-sizes 1,8,16' 'normal distinct-claim proof arguments'
+require_literal "$pr_workflow" '--mixed-claims-512x16' 'fixed mixed-claim proof argument'
 require_literal "$pr_workflow" 'cat benchmark-artifacts/fast/criterion-output.txt' 'direct fast summary'
 require_text "$pr_workflow" 'sed .*benchmark-artifacts/slow/slow-output\.txt' 'direct slow summary'
 pr_benchmark_runners=$(grep -Fc 'runs-on: [self-hosted, benchmark]' "$pr_workflow" || true)
@@ -144,6 +145,7 @@ require_literal "$history_workflow" '[[ "$BENCH_SAMPLES" =~ ^[0-9]+$ ]] && (( 10
 require_literal "$history_workflow" '--samples "$BENCH_SAMPLES"' 'validated sample argument'
 require_literal "$history_workflow" '--same-sizes "$BENCH_SAME_SIZES"' 'validated same-size argument'
 require_literal "$history_workflow" '--distinct-sizes "$BENCH_DISTINCT_SIZES"' 'validated distinct-size argument'
+require_literal "$history_workflow" '--mixed-claims-512x16' 'fixed mixed-claim proof argument'
 require_literal "$history_workflow" "default: '1,8,16,256,512'" 'manual same-claim default sizes'
 require_literal "$history_workflow" "inputs.same_sizes || '1,8,16,256,512'" 'main-push same-claim default sizes'
 require_literal "$history_workflow" "inputs.distinct_sizes || '1,8,16'" 'main-push distinct-claim default sizes'

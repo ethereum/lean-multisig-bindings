@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 
 pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
 pub const MAX_SAME_CLAIM_SIGNERS: usize = 512;
+pub const MIXED_CLAIM_SIGNATURES: usize = 512;
+pub const MIXED_CLAIM_COUNT: usize = 16;
 pub const KEY_CREATION_SLOTS: usize = 1 << 20;
 pub const LIGHTHOUSE_REVISION: &str = "e423a66763bb1bd780492d635123f208d80c3538";
 
@@ -76,6 +78,8 @@ impl SampleSummary {
 pub struct ComparisonReport {
     pub workload: String,
     pub input_size: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim_count: Option<usize>,
     pub lean: SampleSummary,
     pub lighthouse: SampleSummary,
     pub lean_over_lighthouse: f64,
@@ -120,12 +124,35 @@ impl ComparisonReport {
         Ok(Self {
             workload,
             input_size,
+            claim_count: None,
             lean,
             lighthouse,
             lean_over_lighthouse,
             lean_artifact_bytes,
             lighthouse_artifact_bytes,
         })
+    }
+
+    pub fn with_claim_count(mut self, claim_count: usize) -> Result<Self> {
+        ensure!(
+            self.workload.starts_with("mixed_claim_"),
+            "claim count is only valid for mixed-claim workloads"
+        );
+        ensure!(claim_count > 1, "claim count must be greater than one");
+        ensure!(
+            claim_count <= MAX_DISTINCT_CLAIMS,
+            "claim count {claim_count} exceeds maximum {MAX_DISTINCT_CLAIMS}"
+        );
+        ensure!(
+            claim_count <= self.input_size,
+            "claim count must not exceed the signature count"
+        );
+        ensure!(
+            self.input_size.is_multiple_of(claim_count),
+            "signature count must be divisible by claim count"
+        );
+        self.claim_count = Some(claim_count);
+        Ok(self)
     }
 }
 
@@ -163,10 +190,19 @@ impl BenchmarkReport {
         ];
 
         for comparison in &self.comparisons {
+            let input = comparison.claim_count.map_or_else(
+                || comparison.input_size.to_string(),
+                |claim_count| {
+                    format!(
+                        "{} signatures / {claim_count} claims",
+                        comparison.input_size
+                    )
+                },
+            );
             rows.push(format!(
                 "{} | {} | {} | {} | {:.2}x | {:.2} ops/s | {:.2} ops/s | {} | {}",
                 comparison.workload,
-                comparison.input_size,
+                input,
                 format_duration_ns(comparison.lean.median_ns),
                 format_duration_ns(comparison.lighthouse.median_ns),
                 comparison.lean_over_lighthouse,
@@ -208,7 +244,15 @@ impl BenchmarkReport {
         let mut entries = Vec::with_capacity(self.comparisons.len() * 5 + self.supplemental.len());
 
         for comparison in &self.comparisons {
-            let prefix = format!("{}/size-{}", comparison.workload, comparison.input_size);
+            let prefix = comparison.claim_count.map_or_else(
+                || format!("{}/size-{}", comparison.workload, comparison.input_size),
+                |claim_count| {
+                    format!(
+                        "{}/signatures-{}/claims-{claim_count}",
+                        comparison.workload, comparison.input_size
+                    )
+                },
+            );
             entries.extend([
                 action_entry(
                     format!("{prefix}/lean/median"),
@@ -284,6 +328,7 @@ pub struct RunConfig {
     pub samples: usize,
     pub same_sizes: Vec<usize>,
     pub distinct_sizes: Vec<usize>,
+    pub mixed_claims_512x16: bool,
     pub json_path: Option<PathBuf>,
     pub action_json_path: Option<PathBuf>,
     pub warmup_proofs: bool,
@@ -302,6 +347,7 @@ impl RunConfig {
         let mut sizes = None;
         let mut same_sizes = None;
         let mut distinct_sizes = None;
+        let mut mixed_claims_512x16 = false;
         let mut json_path = None;
         let mut action_json_path = None;
         let mut warmup_proofs = false;
@@ -351,6 +397,13 @@ impl RunConfig {
                     distinct_sizes =
                         Some(parse_sizes("--distinct-sizes", text, MAX_DISTINCT_CLAIMS)?);
                 }
+                argument if argument == OsStr::new("--mixed-claims-512x16") => {
+                    ensure!(
+                        !mixed_claims_512x16,
+                        "--mixed-claims-512x16 may only be supplied once"
+                    );
+                    mixed_claims_512x16 = true;
+                }
                 argument if argument == OsStr::new("--json") => {
                     ensure!(json_path.is_none(), "--json may only be supplied once");
                     let value = option_value("--json", arguments.next())?;
@@ -372,7 +425,7 @@ impl RunConfig {
                 }
                 _ => {
                     return Err(anyhow!(
-                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --json, --action-json, or --warmup-proofs",
+                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --mixed-claims-512x16, --json, --action-json, or --warmup-proofs",
                         argument.to_string_lossy()
                     ));
                 }
@@ -405,6 +458,7 @@ impl RunConfig {
             samples: samples.unwrap_or(3),
             same_sizes,
             distinct_sizes,
+            mixed_claims_512x16,
             json_path,
             action_json_path,
             warmup_proofs,
@@ -506,6 +560,7 @@ fn parse_sizes(option: &str, value: &str, maximum: usize) -> Result<Vec<usize>> 
 }
 
 pub struct BlsFixtureSet {
+    claim_count: usize,
     messages: Vec<lighthouse_bls::Hash256>,
     keys: Vec<lighthouse_bls::SecretKey>,
     signatures: Vec<lighthouse_bls::Signature>,
@@ -514,19 +569,34 @@ pub struct BlsFixtureSet {
 
 impl BlsFixtureSet {
     pub fn same_claim(count: usize) -> Result<Self> {
-        let fixtures = Self::build(count, false)?;
+        let fixtures = Self::build(count, 1)?;
         fixtures.validate_raw()?;
         Ok(fixtures)
     }
 
     pub fn distinct_claims(count: usize) -> Result<Self> {
-        let fixtures = Self::build(count, true)?;
+        let fixtures = Self::build(count, count)?;
         fixtures.validate_raw()?;
         Ok(fixtures)
     }
 
-    fn build(count: usize, distinct_claims: bool) -> Result<Self> {
+    pub fn mixed_claims(signature_count: usize, claim_count: usize) -> Result<Self> {
+        let fixtures = Self::build(signature_count, claim_count)?;
+        fixtures.validate_raw()?;
+        Ok(fixtures)
+    }
+
+    fn build(count: usize, claim_count: usize) -> Result<Self> {
         ensure!(count > 0, "BLS fixture count must be greater than zero");
+        ensure!(claim_count > 0, "BLS claim count must be greater than zero");
+        ensure!(
+            claim_count <= count,
+            "BLS claim count must not exceed the signature count"
+        );
+        ensure!(
+            count.is_multiple_of(claim_count),
+            "BLS signature count must be divisible by claim count"
+        );
 
         let mut messages = Vec::with_capacity(count);
         let mut keys = Vec::with_capacity(count);
@@ -534,7 +604,7 @@ impl BlsFixtureSet {
         let mut public_keys = Vec::with_capacity(count);
 
         for index in 0..count {
-            let message_index = if distinct_claims { index } else { 0 };
+            let message_index = index % claim_count;
             let message = lighthouse_bls::Hash256::from(indexed_bytes(message_index)?);
             let secret = indexed_bytes(index)
                 .with_context(|| format!("failed to create BLS secret for signer {index}"))?;
@@ -551,6 +621,7 @@ impl BlsFixtureSet {
         }
 
         Ok(Self {
+            claim_count,
             messages,
             keys,
             signatures,
@@ -566,6 +637,11 @@ impl BlsFixtureSet {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.keys.is_empty()
+    }
+
+    #[must_use]
+    pub fn claim_count(&self) -> usize {
+        self.claim_count
     }
 
     #[must_use]
@@ -613,6 +689,37 @@ impl BlsFixtureSet {
     ) -> bool {
         let public_keys = self.public_keys.iter().collect::<Vec<_>>();
         aggregate.aggregate_verify(&self.messages, &public_keys)
+    }
+
+    pub fn grouped_claim_context(
+        &self,
+    ) -> Result<(Vec<lighthouse_bls::Hash256>, Vec<lighthouse_bls::PublicKey>)> {
+        let mut messages = Vec::with_capacity(self.claim_count);
+        let mut public_keys = Vec::with_capacity(self.claim_count);
+        for claim_index in 0..self.claim_count {
+            let group = self
+                .public_keys
+                .iter()
+                .skip(claim_index)
+                .step_by(self.claim_count)
+                .cloned()
+                .collect::<Vec<_>>();
+            let public_key = lighthouse_bls::AggregatePublicKey::aggregate(&group)
+                .map_err(|error| anyhow!("failed to aggregate BLS claim {claim_index}: {error:?}"))?
+                .to_public_key();
+            messages.push(self.messages[claim_index]);
+            public_keys.push(public_key);
+        }
+        Ok((messages, public_keys))
+    }
+
+    pub fn verify_grouped_claim_aggregate(
+        &self,
+        aggregate: &lighthouse_bls::AggregateSignature,
+    ) -> Result<bool> {
+        let (messages, public_keys) = self.grouped_claim_context()?;
+        let public_keys = public_keys.iter().collect::<Vec<_>>();
+        Ok(aggregate.aggregate_verify(&messages, &public_keys))
     }
 
     #[must_use]
@@ -666,7 +773,7 @@ pub struct FixtureSet {
 
 impl FixtureSet {
     pub fn same_claim(count: usize) -> Result<Self> {
-        Self::build(count, false)
+        Self::build(count, 1)
     }
 
     pub fn distinct_claims(count: usize) -> Result<Self> {
@@ -676,11 +783,23 @@ impl FixtureSet {
             ));
         }
 
-        Self::build(count, true)
+        Self::build(count, count)
     }
 
-    fn build(count: usize, distinct_claims: bool) -> Result<Self> {
-        let bls = BlsFixtureSet::build(count, distinct_claims)?;
+    pub fn mixed_claims(signature_count: usize, claim_count: usize) -> Result<Self> {
+        ensure!(
+            signature_count <= MAX_SAME_CLAIM_SIGNERS,
+            "mixed-claim signature count {signature_count} exceeds maximum {MAX_SAME_CLAIM_SIGNERS}"
+        );
+        ensure!(
+            claim_count <= MAX_DISTINCT_CLAIMS,
+            "mixed-claim count {claim_count} exceeds maximum {MAX_DISTINCT_CLAIMS}"
+        );
+        Self::build(signature_count, claim_count)
+    }
+
+    fn build(count: usize, claim_count: usize) -> Result<Self> {
+        let bls = BlsFixtureSet::build(count, claim_count)?;
 
         let mut lean_claims = Vec::with_capacity(count);
         let mut lean_keys = Vec::with_capacity(count);
@@ -694,15 +813,11 @@ impl FixtureSet {
             })?;
 
         for index in 0..count {
-            let message_index = if distinct_claims { index } else { 0 };
+            let message_index = index % claim_count;
             let message = indexed_bytes(message_index)
                 .with_context(|| format!("failed to create message for signer {index}"))?;
-            let slot = if distinct_claims {
-                u32::try_from(index)
-                    .with_context(|| format!("slot does not fit in u32 for signer {index}"))?
-            } else {
-                0
-            };
+            let slot = u32::try_from(message_index)
+                .with_context(|| format!("slot does not fit in u32 for signer {index}"))?;
             let claim = lean_multisig::Claim::new(message, slot);
 
             let lean_seed = indexed_bytes(index)
@@ -739,6 +854,27 @@ impl FixtureSet {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.lean_keys.is_empty()
+    }
+
+    #[must_use]
+    pub fn claim_count(&self) -> usize {
+        self.bls.claim_count()
+    }
+
+    #[must_use]
+    pub fn lean_claim_groups(&self) -> Vec<lean_multisig::ClaimSigners> {
+        (0..self.claim_count())
+            .map(|claim_index| lean_multisig::ClaimSigners {
+                claim: self.lean_claims[claim_index],
+                signers: self
+                    .lean_public_keys
+                    .iter()
+                    .skip(claim_index)
+                    .step_by(self.claim_count())
+                    .copied()
+                    .collect(),
+            })
+            .collect()
     }
 
     #[must_use]
@@ -800,6 +936,19 @@ impl FixtureSet {
         aggregate: &lighthouse_bls::AggregateSignature,
     ) -> bool {
         self.bls.verify_distinct_claim_aggregate(aggregate)
+    }
+
+    pub fn bls_grouped_claim_context(
+        &self,
+    ) -> Result<(Vec<lighthouse_bls::Hash256>, Vec<lighthouse_bls::PublicKey>)> {
+        self.bls.grouped_claim_context()
+    }
+
+    pub fn verify_bls_grouped_claim_aggregate(
+        &self,
+        aggregate: &lighthouse_bls::AggregateSignature,
+    ) -> Result<bool> {
+        self.bls.verify_grouped_claim_aggregate(aggregate)
     }
 
     #[must_use]

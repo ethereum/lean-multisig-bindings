@@ -213,7 +213,17 @@ def validate_comparison(row: object, samples: int, index: int) -> None:
         raise ValueError(f"{field} must be an object")
     if not isinstance(row.get("workload"), str) or not row["workload"]:
         raise ValueError(f"{field}.workload must be a non-empty string")
-    positive_integer(row.get("input_size"), f"{field}.input_size")
+    input_size = positive_integer(row.get("input_size"), f"{field}.input_size")
+    claim_count = row.get("claim_count")
+    is_mixed = row["workload"].startswith("mixed_claim_")
+    if is_mixed:
+        claim_count = positive_integer(claim_count, f"{field}.claim_count")
+        if claim_count > input_size:
+            raise ValueError(f"{field}.claim_count must not exceed input_size")
+        if input_size % claim_count != 0:
+            raise ValueError(f"{field}.input_size must be divisible by claim_count")
+    elif claim_count is not None:
+        raise ValueError(f"{field}.claim_count is only valid for mixed-claim rows")
     validate_summary(row.get("lean"), f"{field}.lean", samples)
     validate_summary(row.get("lighthouse"), f"{field}.lighthouse", samples)
     positive_number(
