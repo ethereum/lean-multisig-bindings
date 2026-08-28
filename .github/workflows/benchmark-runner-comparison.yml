@@ -21,10 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner_id: dedicated-benchmark
-            runner: '["self-hosted","benchmark"]'
-          - runner_id: ef-gigachungus
-            runner: '["self-hosted-ghr","size-gigachungus-x64"]'
+          - runner_id: requested-chungus-x68
+            runner: '["self-hosted-ghr","size-chungus-x68"]'
     runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 180
     steps:
@@ -63,6 +61,7 @@ jobs:
             echo "kernel=$(uname -srvmo)"
             echo "logical_cpus=$(nproc)"
             echo "lighthouse_revision=$lighthouse_revision"
+            echo "suite=slow"
             echo "samples=3"
             echo "key_creation_slots=1048576"
             echo "same_sizes=1,8,16,256,512"
