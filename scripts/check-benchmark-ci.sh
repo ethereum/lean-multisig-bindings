@@ -3,6 +3,7 @@ set -eu
 
 pr_workflow=.github/workflows/benchmarks-pr.yml
 history_workflow=.github/workflows/benchmarks-history.yml
+runner_comparison_workflow=.github/workflows/benchmark-runner-comparison.yml
 ci_workflow=.github/workflows/ci.yml
 dashboard_builder=scripts/build_benchmark_dashboard.py
 dashboard_test=scripts/test_benchmark_dashboard.py
@@ -50,9 +51,31 @@ check_full_action_pins() {
   [ -z "$unpinned" ] || fail "$file: every uses reference must have a full immutable SHA pin: $unpinned"
 }
 
-for file in "$pr_workflow" "$history_workflow" "$dashboard_builder" "$dashboard_test" "$dashboard_html" "$comparison_bench" "$slow_comparison"; do
+for file in "$pr_workflow" "$history_workflow" "$runner_comparison_workflow" "$dashboard_builder" "$dashboard_test" "$dashboard_html" "$comparison_bench" "$slow_comparison"; do
   require_file "$file"
 done
+
+require_text "$runner_comparison_workflow" '^  pull_request:$' 'pull_request trigger'
+require_text "$runner_comparison_workflow" '^permissions:$' 'top-level permissions block'
+require_text "$runner_comparison_workflow" '^  contents: read$' 'read-only contents permission'
+reject_text "$runner_comparison_workflow" 'pull_request_target|workflow_run' 'privileged trigger'
+reject_text "$runner_comparison_workflow" 'write-all|:[[:space:]]*write([[:space:]]|$)' 'write permission'
+reject_text "$runner_comparison_workflow" 'gh-pages|git push|Publish current benchmark dashboard' 'dashboard publication'
+require_literal "$runner_comparison_workflow" "runner: '[\"self-hosted\",\"benchmark\"]'" 'dedicated benchmark runner matrix entry'
+require_literal "$runner_comparison_workflow" "runner: '[\"self-hosted-ghr\",\"size-gigachungus-x64\"]'" 'EF gigachungus runner matrix entry'
+require_literal "$runner_comparison_workflow" 'runs-on: ${{ fromJSON(matrix.runner) }}' 'matrix-selected runner'
+require_literal "$runner_comparison_workflow" 'github.event.pull_request.head.repo.full_name == github.repository' 'fork pull request rejection'
+require_literal "$runner_comparison_workflow" '--samples 3' 'three-sample comparison'
+require_literal "$runner_comparison_workflow" '--same-sizes 1,8,16,256,512' 'full same-claim comparison sizes'
+require_literal "$runner_comparison_workflow" '--distinct-sizes 1,8,16' 'full distinct-claim comparison sizes'
+require_literal "$runner_comparison_workflow" '--mixed-claim-counts 8,16' 'mixed-claim comparison shapes'
+require_literal "$runner_comparison_workflow" '--warmup-proofs' 'proof warm-up policy'
+require_literal "$runner_comparison_workflow" '/sys/fs/cgroup/cpu.max' 'cgroup CPU limit metadata'
+require_literal "$runner_comparison_workflow" '/sys/fs/cgroup/memory.max' 'cgroup memory limit metadata'
+require_literal "$runner_comparison_workflow" 'runner_name=${{ runner.name }}' 'runner name metadata'
+require_literal "$runner_comparison_workflow" 'resource-usage.txt' 'peak RSS measurement'
+require_literal "$runner_comparison_workflow" 'dashboard.json' 'normalized comparison artifact'
+check_full_action_pins "$runner_comparison_workflow"
 
 reject_text "$comparison_bench" 'benchmark_group\("public_key"\)' 'public-key derivation timing benchmark'
 reject_text "$comparison_bench" 'benchmark_group\("key_creation"\)|secret_key_16_slots' 'obsolete 16-slot Criterion key benchmark'
