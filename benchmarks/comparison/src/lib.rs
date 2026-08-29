@@ -17,6 +17,9 @@ pub const MAX_DISTINCT_CLAIMS: usize = lean_multisig::MAX_CLAIMS;
 pub const MAX_SAME_CLAIM_SIGNERS: usize = 512;
 pub const MIXED_CLAIM_SIGNATURES: usize = 512;
 pub const MIXED_CLAIM_COUNTS: [usize; 2] = [8, 16];
+pub const RECURSIVE_CHILD_SIGNERS: usize = 512;
+pub const MAX_RECURSIVE_FAN_IN: usize = MAX_DISTINCT_CLAIMS;
+pub const RECURSIVE_AGGREGATION_WORKLOAD: &str = "recursive_same_claim_aggregate";
 pub const KEY_CREATION_SLOTS: usize = 1 << 20;
 pub const LIGHTHOUSE_REVISION: &str = "e423a66763bb1bd780492d635123f208d80c3538";
 
@@ -164,11 +167,61 @@ pub struct SupplementalReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RecursiveAggregationReport {
+    pub workload: String,
+    pub fan_in: usize,
+    pub signers_per_child: usize,
+    pub total_signers: usize,
+    pub lean: SampleSummary,
+    pub lean_artifact_bytes: usize,
+}
+
+impl RecursiveAggregationReport {
+    pub fn new(
+        fan_in: usize,
+        signers_per_child: usize,
+        lean: SampleSummary,
+        lean_artifact_bytes: usize,
+    ) -> Result<Self> {
+        ensure!(fan_in >= 2, "recursive fan-in must be at least two");
+        ensure!(
+            fan_in <= MAX_RECURSIVE_FAN_IN,
+            "recursive fan-in {fan_in} exceeds maximum {MAX_RECURSIVE_FAN_IN}"
+        );
+        ensure!(
+            signers_per_child == RECURSIVE_CHILD_SIGNERS,
+            "recursive child signer count must be exactly {RECURSIVE_CHILD_SIGNERS}"
+        );
+        let total_signers = fan_in
+            .checked_mul(signers_per_child)
+            .context("recursive total signer count overflowed")?;
+        ensure!(
+            lean.median_ns > 0,
+            "LeanVM median must be greater than zero"
+        );
+        ensure!(
+            lean_artifact_bytes > 0,
+            "LeanVM artifact size must be greater than zero"
+        );
+        Ok(Self {
+            workload: RECURSIVE_AGGREGATION_WORKLOAD.to_owned(),
+            fan_in,
+            signers_per_child,
+            total_signers,
+            lean,
+            lean_artifact_bytes,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BenchmarkReport {
     pub lighthouse_revision: String,
     pub samples: usize,
     pub proof_warmup: bool,
     pub comparisons: Vec<ComparisonReport>,
+    #[serde(default)]
+    pub recursive_aggregations: Vec<RecursiveAggregationReport>,
     pub supplemental: Vec<SupplementalReport>,
 }
 
@@ -223,12 +276,27 @@ impl BenchmarkReport {
             ));
         }
 
+        for recursive in &self.recursive_aggregations {
+            rows.push(format!(
+                "{} (LeanVM-only) | {} proofs x {} signers ({} total) | {} | - | - | {:.2} ops/s | - | {} | -",
+                recursive.workload,
+                recursive.fan_in,
+                recursive.signers_per_child,
+                recursive.total_signers,
+                format_duration_ns(recursive.lean.median_ns),
+                recursive.lean.operations_per_second,
+                recursive.lean_artifact_bytes,
+            ));
+        }
+
         rows.join("\n")
     }
 
     pub fn to_action_benchmarks(&self) -> Result<Vec<ActionBenchmark>> {
         ensure!(
-            !self.comparisons.is_empty() || !self.supplemental.is_empty(),
+            !self.comparisons.is_empty()
+                || !self.recursive_aggregations.is_empty()
+                || !self.supplemental.is_empty(),
             "cannot export an empty benchmark report"
         );
 
@@ -241,7 +309,11 @@ impl BenchmarkReport {
             "samples={}; proof_warmup={warmup}; lighthouse_revision={}",
             self.samples, self.lighthouse_revision
         );
-        let mut entries = Vec::with_capacity(self.comparisons.len() * 5 + self.supplemental.len());
+        let mut entries = Vec::with_capacity(
+            self.comparisons.len() * 5
+                + self.recursive_aggregations.len() * 2
+                + self.supplemental.len(),
+        );
 
         for comparison in &self.comparisons {
             let prefix = comparison.claim_count.map_or_else(
@@ -282,6 +354,27 @@ impl BenchmarkReport {
                     format!("{prefix}/lighthouse/artifact"),
                     "bytes",
                     comparison.lighthouse_artifact_bytes as f64,
+                    &extra,
+                ),
+            ]);
+        }
+
+        for recursive in &self.recursive_aggregations {
+            let prefix = format!(
+                "{}/fan-in-{}/child-signers-{}",
+                recursive.workload, recursive.fan_in, recursive.signers_per_child
+            );
+            entries.extend([
+                action_entry(
+                    format!("{prefix}/lean/median"),
+                    "ns",
+                    recursive.lean.median_ns as f64,
+                    &extra,
+                ),
+                action_entry(
+                    format!("{prefix}/lean/artifact"),
+                    "bytes",
+                    recursive.lean_artifact_bytes as f64,
                     &extra,
                 ),
             ]);
@@ -329,6 +422,7 @@ pub struct RunConfig {
     pub same_sizes: Vec<usize>,
     pub distinct_sizes: Vec<usize>,
     pub mixed_claim_counts: Vec<usize>,
+    pub recursive_fan_ins: Vec<usize>,
     pub json_path: Option<PathBuf>,
     pub action_json_path: Option<PathBuf>,
     pub warmup_proofs: bool,
@@ -348,6 +442,7 @@ impl RunConfig {
         let mut same_sizes = None;
         let mut distinct_sizes = None;
         let mut mixed_claim_counts = None;
+        let mut recursive_fan_ins = None;
         let mut json_path = None;
         let mut action_json_path = None;
         let mut warmup_proofs = false;
@@ -419,6 +514,22 @@ impl RunConfig {
                     );
                     mixed_claim_counts = Some(parsed);
                 }
+                argument if argument == OsStr::new("--recursive-fan-ins") => {
+                    ensure!(
+                        recursive_fan_ins.is_none(),
+                        "--recursive-fan-ins may only be supplied once"
+                    );
+                    let value = option_value("--recursive-fan-ins", arguments.next())?;
+                    let text = value
+                        .to_str()
+                        .context("--recursive-fan-ins value must be valid UTF-8")?;
+                    let parsed = parse_sizes("--recursive-fan-ins", text, MAX_RECURSIVE_FAN_IN)?;
+                    ensure!(
+                        parsed.iter().all(|fan_in| *fan_in >= 2),
+                        "--recursive-fan-ins entries must be at least two"
+                    );
+                    recursive_fan_ins = Some(parsed);
+                }
                 argument if argument == OsStr::new("--json") => {
                     ensure!(json_path.is_none(), "--json may only be supplied once");
                     let value = option_value("--json", arguments.next())?;
@@ -440,7 +551,7 @@ impl RunConfig {
                 }
                 _ => {
                     return Err(anyhow!(
-                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --mixed-claim-counts, --json, --action-json, or --warmup-proofs",
+                        "unknown argument `{}`; expected --samples, --sizes, --same-sizes, --distinct-sizes, --mixed-claim-counts, --recursive-fan-ins, --json, --action-json, or --warmup-proofs",
                         argument.to_string_lossy()
                     ));
                 }
@@ -474,6 +585,7 @@ impl RunConfig {
             same_sizes,
             distinct_sizes,
             mixed_claim_counts: mixed_claim_counts.unwrap_or_default(),
+            recursive_fan_ins: recursive_fan_ins.unwrap_or_default(),
             json_path,
             action_json_path,
             warmup_proofs,

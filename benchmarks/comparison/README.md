@@ -40,7 +40,8 @@ cargo run --release -p lean-multisig-comparison --bin slow_comparison -- \
   --samples 3 \
   --same-sizes 32,64,128,256,512 \
   --distinct-sizes 1,8,16 \
-  --mixed-claim-counts 8,16
+  --mixed-claim-counts 8,16 \
+  --recursive-fan-ins 2,4,8,16
 ```
 
 `--mixed-claim-counts 8,16` adds mixed workloads with 512 raw signatures
@@ -51,6 +52,18 @@ same 512 signatures. For BLS verification, timing includes grouping and
 aggregating each claim's public keys before verifying the single aggregate
 against the requested number of message-and-aggregated-key pairs. Counts must
 be unique integers from 2 through 16 that divide 512 evenly.
+
+`--recursive-fan-ins 2,4,8,16` measures LeanVM's proof-to-proof recursion.
+The runner first creates the maximum requested number of child proofs outside
+the timed region. Every child aggregates 512 distinct XMSS signers of the same
+claim (the identical message and slot), and signer sets are disjoint between
+children. Each timed sample then
+validates and combines the requested number of pre-built children into one new
+proof. The report records the merge median and serialized output-proof size for
+each fan-in. With `--warmup-proofs`, one additional merge at each fan-in runs
+before its recorded samples. Fan-ins must be unique integers from 2 through 16.
+The option is disabled by default for local runs because preparing the child
+proofs is slow.
 
 The `2^20`-slot key generation is always part of this runner. It reports the
 generation median and serialized key size beside Lighthouse BLS key generation;
@@ -82,6 +95,7 @@ cargo build --release -p lean-multisig-comparison --bin slow_comparison
   --same-sizes 1,8,16,256,512 \
   --distinct-sizes 1,8,16 \
   --mixed-claim-counts 8,16 \
+  --recursive-fan-ins 2,4,8,16 \
   --warmup-proofs \
   --json full.json
 ```
@@ -121,7 +135,9 @@ because benchmark jobs execute repository code on that machine. Same-claim
 proofs use sizes `1,8,16,256,512`;
 distinct-claim proofs use `1,8,16`, and the mixed workloads use 512 signatures
 across 8 and 16 claims. Both place their current measurements in the
-job summary, and the normalized slow artifact includes overall peak RSS. Both
+job summary. The slow job also combines 2, 4, 8, and 16 pre-built same-claim
+proofs, each representing 512 different signers. The normalized slow artifact
+includes overall peak RSS. Both
 jobs retain their raw output, normalized data, and environment metadata as
 workflow artifacts for 14 days. Fast dashboard data is normalized from
 Criterion's structured estimates; slow artifacts contain the full numeric
@@ -141,18 +157,20 @@ and proof-warmup mode.
 
 ## Current-results dashboard
 
-The trusted benchmark workflow has three modes:
+The trusted benchmark workflow has two modes:
 
 - Relevant pushes to `main` run both suites on the dedicated self-hosted runner
   labeled `benchmark`. With one matching runner, the jobs execute one at a
   time. The slow suite uses three samples and proof warm-up, with same-claim
   sizes `1,8,16,256,512`, distinct-claim sizes `1,8,16`, and the fixed
-  512-signature mixed workloads with 8 and 16 claims. Fast artifacts are
-  retained for 30 days and slow artifacts for 90 days.
+  512-signature mixed workloads with 8 and 16 claims. It also measures 2, 4, 8,
+  and 16 pre-built same-claim child proofs with 512 disjoint signers per child.
+  Fast artifacts are retained for 30 days and slow artifacts for 90 days.
 - `workflow_dispatch` accepts `fast`, `slow`, or `all`, plus the slow sample
   count (minimum 3) and independent same/distinct size lists. Manual slow runs
-  always use proof warm-up. One-sample smoke runs remain local-only and cannot
-  be published by the workflow.
+  also accept a recursive fan-in list, defaulting to `2,4,8,16`, and always use
+  proof warm-up. One-sample smoke runs remain local-only and cannot be published
+  by the workflow.
 
 For example, this explicitly opts into the large same-claim sweep while keeping
 distinct claims within their hard limit of 16:
@@ -162,7 +180,8 @@ gh workflow run benchmarks-history.yml \
   -f suite=slow \
   -f samples=3 \
   -f same_sizes=32,64,128,256,512 \
-  -f distinct_sizes=1,8,16
+  -f distinct_sizes=1,8,16 \
+  -f recursive_fan_ins=2,4,8,16
 ```
 
 That full sweep can take substantial time and memory. Same-claim sizes
@@ -179,7 +198,8 @@ The public page is <https://ethereum.github.io/lean-multisig-bindings/>. It show
 only the newest result for each suite: LeanVM and Lighthouse timings and ratios
 grouped by operation family; serialized secret-key, public-key, and raw-signature
 sizes; LeanVM proof and aggregate BLS signature sizes; overall slow-suite peak
-RSS; and the measurement environment. The LeanVM key-creation row uses
+RSS; recursive proof-to-proof aggregation at fan-ins 2, 4, 8, and 16; and the
+measurement environment. The LeanVM key-creation row uses
 1,048,576 signing slots and reports its serialized key size. A short glossary
 defines the aggregation and verification workloads. There are no
 commit-over-commit plots. The first publication removes the old nested

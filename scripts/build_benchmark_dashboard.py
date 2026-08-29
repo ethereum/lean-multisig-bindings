@@ -25,6 +25,8 @@ PEAK_RSS_RE = re.compile(
 )
 MAX_EXACT_KIB = (2**53 - 1) // 1024
 KEY_CREATION_SLOTS = 2**20
+MAX_RECURSIVE_FAN_IN = 16
+RECURSIVE_CHILD_SIGNERS = 512
 
 
 def parse_environment(path: Path) -> dict[str, str]:
@@ -246,6 +248,29 @@ def validate_supplemental(row: object, samples: int, index: int) -> None:
     validate_summary(row.get("lighthouse"), f"{field}.lighthouse", samples)
 
 
+def validate_recursive_aggregation(row: object, samples: int, index: int) -> None:
+    field = f"recursive_aggregations[{index}]"
+    if not isinstance(row, dict):
+        raise ValueError(f"{field} must be an object")
+    if row.get("workload") != "recursive_same_claim_aggregate":
+        raise ValueError(f"{field}.workload must identify recursive same-claim aggregation")
+    fan_in = positive_integer(row.get("fan_in"), f"{field}.fan_in")
+    if fan_in < 2 or fan_in > MAX_RECURSIVE_FAN_IN:
+        raise ValueError(f"{field}.fan_in must be between 2 and {MAX_RECURSIVE_FAN_IN}")
+    signers_per_child = positive_integer(
+        row.get("signers_per_child"), f"{field}.signers_per_child"
+    )
+    if signers_per_child != RECURSIVE_CHILD_SIGNERS:
+        raise ValueError(
+            f"{field}.signers_per_child must be {RECURSIVE_CHILD_SIGNERS}"
+        )
+    total_signers = positive_integer(row.get("total_signers"), f"{field}.total_signers")
+    if total_signers != fan_in * signers_per_child:
+        raise ValueError(f"{field}.total_signers does not match its fan-in shape")
+    validate_summary(row.get("lean"), f"{field}.lean", samples)
+    positive_integer(row.get("lean_artifact_bytes"), f"{field}.lean_artifact_bytes")
+
+
 def parse_peak_rss(path: Path) -> int:
     values = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -293,15 +318,23 @@ def build_slow(
         raise ValueError("environment and report proof-warmup modes differ")
 
     comparisons = report.get("comparisons")
+    recursive_aggregations = report.get("recursive_aggregations", [])
     supplemental = report.get("supplemental")
     if not isinstance(comparisons, list) or not comparisons:
         raise ValueError("comparisons must be a non-empty list")
     if not isinstance(supplemental, list):
         raise ValueError("supplemental must be a list")
+    if not isinstance(recursive_aggregations, list):
+        raise ValueError("recursive_aggregations must be a list")
     for index, row in enumerate(comparisons):
         validate_comparison(row, samples, index)
     for index, row in enumerate(supplemental):
         validate_supplemental(row, samples, index)
+    for index, row in enumerate(recursive_aggregations):
+        validate_recursive_aggregation(row, samples, index)
+    expected_fan_ins = ",".join(str(row["fan_in"]) for row in recursive_aggregations)
+    if environment.get("recursive_fan_ins", "") != expected_fan_ins:
+        raise ValueError("environment and report recursive fan-ins differ")
     key_creation = [
         row for row in comparisons if row.get("workload") == "key_creation"
     ]
@@ -325,6 +358,7 @@ def build_slow(
         "proof_warmup": proof_warmup,
         "peak_rss_bytes": peak_rss_bytes,
         "comparisons": comparisons,
+        "recursive_aggregations": recursive_aggregations,
         "supplemental": supplemental,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)

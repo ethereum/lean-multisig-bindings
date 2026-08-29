@@ -9,9 +9,10 @@ use std::{
 };
 
 use lean_multisig_comparison::{
-    BenchmarkReport, ComparisonReport, RunConfig, SampleSummary, SupplementalReport,
-    KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MAX_DISTINCT_CLAIMS, MAX_SAME_CLAIM_SIGNERS,
-    MIXED_CLAIM_COUNTS, MIXED_CLAIM_SIGNATURES,
+    BenchmarkReport, ComparisonReport, RecursiveAggregationReport, RunConfig, SampleSummary,
+    SupplementalReport, KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MAX_DISTINCT_CLAIMS,
+    MAX_RECURSIVE_FAN_IN, MAX_SAME_CLAIM_SIGNERS, MIXED_CLAIM_COUNTS, MIXED_CLAIM_SIGNATURES,
+    RECURSIVE_CHILD_SIGNERS,
 };
 
 #[test]
@@ -179,6 +180,33 @@ fn comparison_report_rejects_zero_sizes() {
 }
 
 #[test]
+fn recursive_report_records_the_fan_in_and_total_signers() {
+    let summary = SampleSummary::from_durations([Duration::from_millis(800)]).unwrap();
+    let report =
+        RecursiveAggregationReport::new(4, RECURSIVE_CHILD_SIGNERS, summary, 250_000).unwrap();
+
+    assert_eq!(report.workload, "recursive_same_claim_aggregate");
+    assert_eq!(report.fan_in, 4);
+    assert_eq!(report.signers_per_child, 512);
+    assert_eq!(report.total_signers, 2_048);
+    assert_eq!(report.lean_artifact_bytes, 250_000);
+}
+
+#[test]
+fn recursive_report_rejects_invalid_shapes() {
+    let summary = SampleSummary::from_durations([Duration::from_millis(1)]).unwrap();
+
+    assert!(RecursiveAggregationReport::new(1, 512, summary.clone(), 1).is_err());
+    assert!(
+        RecursiveAggregationReport::new(MAX_RECURSIVE_FAN_IN + 1, 512, summary.clone(), 1,)
+            .is_err()
+    );
+    assert!(RecursiveAggregationReport::new(2, 0, summary.clone(), 1).is_err());
+    assert!(RecursiveAggregationReport::new(2, 511, summary.clone(), 1).is_err());
+    assert!(RecursiveAggregationReport::new(2, 512, summary, 0).is_err());
+}
+
+#[test]
 fn config_defaults_to_practical_sizes_and_three_samples() {
     let config = RunConfig::parse_from(["slow-comparison"]).unwrap();
 
@@ -186,6 +214,7 @@ fn config_defaults_to_practical_sizes_and_three_samples() {
     assert_eq!(config.same_sizes, vec![1, 8, 16]);
     assert_eq!(config.distinct_sizes, vec![1, 8, 16]);
     assert!(config.mixed_claim_counts.is_empty());
+    assert!(config.recursive_fan_ins.is_empty());
     assert!(!config.warmup_proofs);
 }
 
@@ -205,6 +234,19 @@ fn config_accepts_mixed_claim_counts() {
     .is_err());
     assert!(RunConfig::parse_from(["slow-comparison", "--mixed-claim-counts", "1,16",]).is_err());
     assert!(RunConfig::parse_from(["slow-comparison", "--mixed-claim-counts", "3,16",]).is_err());
+}
+
+#[test]
+fn config_accepts_recursive_fan_ins() {
+    let config =
+        RunConfig::parse_from(["slow-comparison", "--recursive-fan-ins", "2,4,8,16"]).unwrap();
+
+    assert_eq!(config.recursive_fan_ins, vec![2, 4, 8, 16]);
+    for invalid in ["1", "17", "2,2"] {
+        assert!(
+            RunConfig::parse_from(["slow-comparison", "--recursive-fan-ins", invalid,]).is_err()
+        );
+    }
 }
 
 #[test]
@@ -485,6 +527,7 @@ fn config_rejects_unknown_repeated_and_missing_options() {
         vec!["slow-comparison", "--sizes"],
         vec!["slow-comparison", "--same-sizes"],
         vec!["slow-comparison", "--distinct-sizes"],
+        vec!["slow-comparison", "--recursive-fan-ins"],
         vec!["slow-comparison", "--json"],
         vec!["slow-comparison", "--warmup-proofs", "--warmup-proofs"],
     ] {
@@ -506,6 +549,7 @@ fn config_rejects_malformed_and_duplicate_sizes() {
         assert!(RunConfig::parse_from(["slow-comparison", "--sizes", sizes]).is_err());
         assert!(RunConfig::parse_from(["slow-comparison", "--same-sizes", sizes]).is_err());
         assert!(RunConfig::parse_from(["slow-comparison", "--distinct-sizes", sizes]).is_err());
+        assert!(RunConfig::parse_from(["slow-comparison", "--recursive-fan-ins", sizes]).is_err());
     }
 }
 
@@ -526,6 +570,13 @@ fn benchmark_report_round_trips_through_json() {
             96,
         )
         .unwrap()],
+        recursive_aggregations: vec![RecursiveAggregationReport::new(
+            2,
+            RECURSIVE_CHILD_SIGNERS,
+            SampleSummary::from_durations([Duration::from_millis(800)]).unwrap(),
+            250_000,
+        )
+        .unwrap()],
         supplemental: vec![SupplementalReport {
             workload: "lighthouse_signature_sets_verify".to_owned(),
             input_size: 8,
@@ -540,6 +591,7 @@ fn benchmark_report_round_trips_through_json() {
     assert!(restored.proof_warmup);
     assert!(json.contains("\"workload\": \"distinct_claim_verify_conceptual\""));
     assert!(json.contains("\"workload\": \"lighthouse_signature_sets_verify\""));
+    assert!(json.contains("\"workload\": \"recursive_same_claim_aggregate\""));
     assert!(report
         .to_table()
         .contains("distinct_claim_verify_conceptual"));
@@ -560,6 +612,13 @@ fn action_benchmarks_include_exact_paired_and_supplemental_entries() {
             lighthouse.clone(),
             1_024,
             96,
+        )
+        .unwrap()],
+        recursive_aggregations: vec![RecursiveAggregationReport::new(
+            2,
+            RECURSIVE_CHILD_SIGNERS,
+            SampleSummary::from_durations([Duration::from_millis(800)]).unwrap(),
+            250_000,
         )
         .unwrap()],
         supplemental: vec![SupplementalReport {
@@ -608,6 +667,18 @@ fn action_benchmarks_include_exact_paired_and_supplemental_entries() {
                 "extra": extra,
             },
             {
+                "name": "recursive_same_claim_aggregate/fan-in-2/child-signers-512/lean/median",
+                "unit": "ns",
+                "value": 800_000_000.0,
+                "extra": extra,
+            },
+            {
+                "name": "recursive_same_claim_aggregate/fan-in-2/child-signers-512/lean/artifact",
+                "unit": "bytes",
+                "value": 250_000.0,
+                "extra": extra,
+            },
+            {
                 "name": "lighthouse_signature_sets_verify/size-8/lighthouse/median",
                 "unit": "ns",
                 "value": 10_000_000.0,
@@ -625,6 +696,7 @@ fn action_benchmark_context_records_disabled_proof_warmup() {
         samples: 1,
         proof_warmup: false,
         comparisons: vec![],
+        recursive_aggregations: vec![],
         supplemental: vec![SupplementalReport {
             workload: "lighthouse_signature_sets_verify".to_owned(),
             input_size: 1,
@@ -647,6 +719,7 @@ fn action_benchmarks_reject_an_empty_report() {
         samples: 3,
         proof_warmup: true,
         comparisons: vec![],
+        recursive_aggregations: vec![],
         supplemental: vec![],
     };
 
@@ -664,6 +737,7 @@ fn action_export_does_not_change_the_full_report_schema() {
         samples: 1,
         proof_warmup: false,
         comparisons: vec![],
+        recursive_aggregations: vec![],
         supplemental: vec![SupplementalReport {
             workload: "lighthouse_signature_sets_verify".to_owned(),
             input_size: 1,
@@ -685,6 +759,7 @@ fn action_export_does_not_change_the_full_report_schema() {
             "comparisons",
             "lighthouse_revision",
             "proof_warmup",
+            "recursive_aggregations",
             "samples",
             "supplemental",
         ]
@@ -720,6 +795,7 @@ fn table_contains_paired_measurements_and_artifact_sizes() {
             96,
         )
         .unwrap()],
+        recursive_aggregations: vec![],
         supplemental: vec![],
     };
 
@@ -744,6 +820,7 @@ fn table_visibly_labels_supplemental_rows_as_lighthouse_only() {
         samples: 1,
         proof_warmup: false,
         comparisons: vec![],
+        recursive_aggregations: vec![],
         supplemental: vec![SupplementalReport {
             workload: "lighthouse_signature_sets_verify".to_owned(),
             input_size: 8,
