@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "suite": "fast",
-  "measured_at": "2026-08-27T13:22:24Z",
+  "measured_at": "2026-08-29T18:28:04Z",
   "environment": {
-    "commit": "cf6e9835dc27e323912d6a6185ef3d83729d95a2",
+    "commit": "cd6fe61ee627279ea6444473ca39fdb61ba535b2",
     "runner_os": "Linux",
     "runner_arch": "X64",
     "runner_image_os": "unknown",
@@ -12,7 +12,7 @@
     "lighthouse_revision": "e423a66763bb1bd780492d635123f208d80c3538",
     "samples": "criterion-default",
     "proof_warmup": "not-applicable",
-    "measured_at": "2026-08-27T13:22:24Z",
+    "measured_at": "2026-08-29T18:28:04Z",
     "cpu": "AMD Ryzen 9 7940HS w/ Radeon 780M Graphics"
   },
   "artifacts": [
@@ -43,71 +43,71 @@
       "workload": "independent_signatures_verify",
       "implementation": "lean",
       "input_size": 1,
-      "median_ns": 246397,
-      "deviation_ns": 392
+      "median_ns": 246475,
+      "deviation_ns": 254
     },
     {
       "name": "independent_signatures_verify/lean/16",
       "workload": "independent_signatures_verify",
       "implementation": "lean",
       "input_size": 16,
-      "median_ns": 4651693,
-      "deviation_ns": 2931
+      "median_ns": 4654119,
+      "deviation_ns": 25768
     },
     {
       "name": "independent_signatures_verify/lean/8",
       "workload": "independent_signatures_verify",
       "implementation": "lean",
       "input_size": 8,
-      "median_ns": 2319030,
-      "deviation_ns": 1144
+      "median_ns": 2318830,
+      "deviation_ns": 1660
     },
     {
       "name": "independent_signatures_verify/lighthouse/1",
       "workload": "independent_signatures_verify",
       "implementation": "lighthouse",
       "input_size": 1,
-      "median_ns": 876497,
-      "deviation_ns": 32481
+      "median_ns": 875541,
+      "deviation_ns": 30344
     },
     {
       "name": "independent_signatures_verify/lighthouse/16",
       "workload": "independent_signatures_verify",
       "implementation": "lighthouse",
       "input_size": 16,
-      "median_ns": 2399383,
-      "deviation_ns": 129029
+      "median_ns": 2398293,
+      "deviation_ns": 123124
     },
     {
       "name": "independent_signatures_verify/lighthouse/8",
       "workload": "independent_signatures_verify",
       "implementation": "lighthouse",
       "input_size": 8,
-      "median_ns": 2257101,
-      "deviation_ns": 156734
+      "median_ns": 2267427,
+      "deviation_ns": 138611
     },
     {
       "name": "raw_signature_deserialize/lean",
       "workload": "raw_signature_deserialize",
       "implementation": "lean",
       "input_size": null,
-      "median_ns": 534,
-      "deviation_ns": 3
+      "median_ns": 526,
+      "deviation_ns": 6
     },
     {
       "name": "raw_signature_deserialize/lighthouse",
       "workload": "raw_signature_deserialize",
       "implementation": "lighthouse",
       "input_size": null,
-      "median_ns": 21500,
-      "deviation_ns": 7
+      "median_ns": 21503,
+      "deviation_ns": 15
     },
     {
       "name": "raw_signature_serialize/lean",
       "workload": "raw_signature_serialize",
       "implementation": "lean",
       "input_size": null,
-      "median_ns": 287,
+      "median_ns": 285,
       "deviation_ns": 1
     },
     {
@@ -116,39 +116,39 @@
       "implementation": "lighthouse",
       "input_size": null,
       "median_ns": 93,
-      "deviation_ns": 0
+      "deviation_ns": 6
     },
     {
       "name": "sign/lean",
       "workload": "sign",
       "implementation": "lean",
       "input_size": null,
-      "median_ns": 1658956,
-      "deviation_ns": 2399
+      "median_ns": 1659876,
+      "deviation_ns": 10329
     },
     {
       "name": "sign/lighthouse",
       "workload": "sign",
       "implementation": "lighthouse",
       "input_size": null,
-      "median_ns": 255932,
-      "deviation_ns": 519
+      "median_ns": 256202,
+      "deviation_ns": 393
     },
     {
       "name": "single_verify/lean",
       "workload": "single_verify",
       "implementation": "lean",
       "input_size": null,
-      "median_ns": 246486,
-      "deviation_ns": 231
+      "median_ns": 246547,
+      "deviation_ns": 536
     },
     {
       "name": "single_verify/lighthouse",
       "workload": "single_verify",
       "implementation": "lighthouse",
       "input_size": null,
-      "median_ns": 724706,
-      "deviation_ns": 106772
+      "median_ns": 779049,
+      "deviation_ns": 66849
     }
   ]
 }

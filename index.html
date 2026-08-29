@@ -253,11 +253,15 @@
       <dl class="definitions">
         <div>
           <dt>Same-claim aggregation</dt>
-          <dd>Many independent signers sign the same message. LeanVM checks those signatures in the zkVM and produces a proof; Lighthouse combines the BLS signatures into one signature.</dd>
+          <dd>Many independent signers sign the same claim: the identical message and slot. LeanVM checks those signatures in the zkVM and produces a proof; Lighthouse combines the BLS signatures into one signature.</dd>
         </div>
         <div>
           <dt>Same-claim verification</dt>
           <dd>Checks the LeanVM proof or aggregate BLS signature against that one message and the complete set of signers.</dd>
+        </div>
+        <div>
+          <dt>Recursive same-claim aggregation</dt>
+          <dd>Combines 2, 4, 8, or 16 pre-built LeanVM proofs into one new proof. Every child represents 512 different signers of the same claim—the identical message and slot—and signer sets are disjoint between children. Timing excludes creation of the child proofs but includes validating them and producing the new recursive proof.</dd>
         </div>
         <div>
           <dt>Distinct-claim aggregation</dt>
@@ -330,6 +334,10 @@
       return inputSize == null ? label : `${label} (size = ${inputSize})`;
     }
 
+    function recursiveOperationLabel(result) {
+      return `Fan-in ${Number(result.fan_in).toLocaleString()} (${Number(result.signers_per_child).toLocaleString()} signers per child, ${Number(result.total_signers).toLocaleString()} total signers)`;
+    }
+
     function artifactLabel(artifact) {
       if (artifact === "public_key") return "Public key";
       if (artifact === "raw_signature") return "Raw signature";
@@ -400,6 +408,7 @@
       "Basic operations",
       "Same-claim aggregation",
       "Same-claim verification",
+      "Recursive same-claim aggregation",
       "Mixed-claim aggregation",
       "Mixed-claim verification",
       "Distinct-claim aggregation",
@@ -410,6 +419,7 @@
     function benchmarkGroup(workload) {
       if (workload === "same_claim_aggregate") return "Same-claim aggregation";
       if (workload === "same_claim_verify") return "Same-claim verification";
+      if (workload === "recursive_same_claim_aggregate") return "Recursive same-claim aggregation";
       if (workload === "mixed_claim_aggregate") return "Mixed-claim aggregation";
       if (workload === "mixed_claim_verify_conceptual") return "Mixed-claim verification";
       if (workload === "distinct_claim_aggregate") return "Distinct-claim aggregation";
@@ -527,6 +537,19 @@
         ["Operation", "LeanVM median", "Lighthouse median", "LeanVM / BLS", "LeanVM proof size", "BLS signature size"],
         rows.filter(row => row.workload !== "key_creation"),
       );
+      const recursiveRows = (data.recursive_aggregations || []).map(result => [
+        recursiveOperationLabel(result),
+        duration(result.lean?.median_ns),
+        bytes(result.lean_artifact_bytes),
+      ]);
+      if (recursiveRows.length > 0) {
+        target.append(node("h3", "Recursive same-claim aggregation", "subtable-title"));
+        addTable(
+          target,
+          ["Operation", "LeanVM median", "LeanVM proof size"],
+          recursiveRows,
+        );
+      }
       document.getElementById("slow-stamp").textContent = new Date(data.measured_at).toLocaleString();
     }
 
