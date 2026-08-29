@@ -42,6 +42,11 @@ on:
         required: true
         default: '1,8,16'
         type: string
+      recursive_fan_ins:
+        description: Comma-separated recursive proof fan-ins (2 through 16)
+        required: true
+        default: '2,4,8,16'
+        type: string
 
 permissions:
   contents: read
@@ -156,6 +161,7 @@ jobs:
       BENCH_SAMPLES: ${{ github.event_name == 'workflow_dispatch' && inputs.samples || '3' }}
       BENCH_SAME_SIZES: ${{ github.event_name == 'workflow_dispatch' && inputs.same_sizes || '1,8,16,256,512' }}
       BENCH_DISTINCT_SIZES: ${{ github.event_name == 'workflow_dispatch' && inputs.distinct_sizes || '1,8,16' }}
+      BENCH_RECURSIVE_FAN_INS: ${{ github.event_name == 'workflow_dispatch' && inputs.recursive_fan_ins || '2,4,8,16' }}
     steps:
       - name: Check out the trusted revision
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -181,6 +187,10 @@ jobs:
           }
           [[ "$BENCH_DISTINCT_SIZES" =~ ^[0-9]+(,[0-9]+)*$ ]] || {
             echo 'distinct_sizes must be a comma-separated integer list' >&2
+            exit 1
+          }
+          [[ "$BENCH_RECURSIVE_FAN_INS" =~ ^[0-9]+(,[0-9]+)*$ ]] || {
+            echo 'recursive_fan_ins must be a comma-separated integer list' >&2
             exit 1
           }
 
@@ -211,6 +221,7 @@ jobs:
             echo "same_sizes=$BENCH_SAME_SIZES"
             echo "distinct_sizes=$BENCH_DISTINCT_SIZES"
             echo "mixed_claim_shapes=512x8,512x16"
+            echo "recursive_fan_ins=$BENCH_RECURSIVE_FAN_INS"
             echo "proof_warmup=enabled"
             echo
             rustc -Vv
@@ -229,6 +240,7 @@ jobs:
             --same-sizes "$BENCH_SAME_SIZES" \
             --distinct-sizes "$BENCH_DISTINCT_SIZES" \
             --mixed-claim-counts 8,16 \
+            --recursive-fan-ins "$BENCH_RECURSIVE_FAN_INS" \
             --warmup-proofs \
             --json benchmark-artifacts/slow/full.json 2>&1 \
             | tee benchmark-artifacts/slow/slow-output.txt

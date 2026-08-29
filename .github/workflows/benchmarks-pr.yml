@@ -168,6 +168,7 @@ jobs:
             echo "same_sizes=1,8,16,256,512"
             echo "distinct_sizes=1,8,16"
             echo "mixed_claim_shapes=512x8,512x16"
+            echo "recursive_fan_ins=2,4,8,16"
             echo "proof_warmup=enabled"
             echo
             rustc -Vv
@@ -186,6 +187,7 @@ jobs:
             --same-sizes 1,8,16,256,512 \
             --distinct-sizes 1,8,16 \
             --mixed-claim-counts 8,16 \
+            --recursive-fan-ins 2,4,8,16 \
             --warmup-proofs \
             --json benchmark-artifacts/slow/full.json 2>&1 \
             | tee benchmark-artifacts/slow/slow-output.txt

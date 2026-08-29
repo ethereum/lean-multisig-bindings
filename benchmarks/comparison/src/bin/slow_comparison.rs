@@ -1,13 +1,15 @@
 use std::{
     env, fs,
     hint::black_box,
+    ops::Range,
     time::{Duration, Instant},
 };
 
 use anyhow::{bail, ensure, Context, Result};
 use lean_multisig_comparison::{
-    ensure_distinct_output_paths, BenchmarkReport, ComparisonReport, FixtureSet, RunConfig,
-    SampleSummary, KEY_CREATION_SLOTS, LIGHTHOUSE_REVISION, MIXED_CLAIM_SIGNATURES,
+    deterministic_key_material, ensure_distinct_output_paths, BenchmarkReport, ComparisonReport,
+    FixtureSet, RecursiveAggregationReport, RunConfig, SampleSummary, KEY_CREATION_SLOTS,
+    LIGHTHOUSE_REVISION, MAX_DISTINCT_CLAIMS, MIXED_CLAIM_SIGNATURES, RECURSIVE_CHILD_SIGNERS,
 };
 
 const SEMANTIC_WARNING: &str = "WARNING: leanMultisig aggregation generates zkVM proofs, while Lighthouse BLS aggregation combines elliptic-curve points; these operations do not have identical security semantics.";
@@ -130,11 +132,18 @@ fn run(config: RunConfig) -> Result<()> {
         )?);
     }
 
+    let recursive_aggregations = measure_recursive_aggregations(
+        &config.recursive_fan_ins,
+        config.samples,
+        config.warmup_proofs,
+    )?;
+
     let report = BenchmarkReport {
         lighthouse_revision: LIGHTHOUSE_REVISION.to_owned(),
         samples: config.samples,
         proof_warmup: config.warmup_proofs,
         comparisons,
+        recursive_aggregations,
         supplemental: Vec::new(),
     };
 
@@ -222,6 +231,109 @@ fn measure_key_creation(samples: usize) -> Result<ComparisonReport> {
         lighthouse_key.serialize().as_ref().len(),
     )
     .context("failed to assemble key_creation report")
+}
+
+fn measure_recursive_aggregations(
+    fan_ins: &[usize],
+    samples: usize,
+    warmup_proofs: bool,
+) -> Result<Vec<RecursiveAggregationReport>> {
+    let Some(&maximum_fan_in) = fan_ins.iter().max() else {
+        return Ok(Vec::new());
+    };
+    let last_slot = u32::try_from(MAX_DISTINCT_CLAIMS - 1)
+        .context("the recursive fixture slot count must fit in u32")?;
+    let claim = lean_multisig::Claim::new(deterministic_key_material(0)?, 0);
+    let mut children = Vec::with_capacity(maximum_fan_in);
+    let mut public_keys = Vec::with_capacity(maximum_fan_in * RECURSIVE_CHILD_SIGNERS);
+
+    for child_index in 0..maximum_fan_in {
+        let signer_range = recursive_signer_range(child_index)?;
+        let child_keys_start = public_keys.len();
+        let mut signatures = Vec::with_capacity(RECURSIVE_CHILD_SIGNERS);
+        for signer_index in signer_range {
+            let seed = deterministic_key_material(signer_index).with_context(|| {
+                format!("failed to create seed for recursive signer {signer_index}")
+            })?;
+            let key = lean_multisig::SecretKey::from_seed(seed, 0..=last_slot)
+                .with_context(|| format!("failed to create recursive signer {signer_index}"))?;
+            public_keys.push(key.public_key());
+            signatures.push(key.sign(&claim).with_context(|| {
+                format!("failed to sign the recursive claim with signer {signer_index}")
+            })?);
+        }
+
+        let child = lean_multisig::aggregate(signatures, &claim)
+            .with_context(|| format!("failed to build recursive child proof {child_index}"))?;
+        lean_multisig::verify(&child, &public_keys[child_keys_start..], &claim)
+            .with_context(|| format!("recursive child proof {child_index} failed verification"))?;
+        children.push(child);
+    }
+
+    fan_ins
+        .iter()
+        .map(|&fan_in| {
+            let total_signers = fan_in
+                .checked_mul(RECURSIVE_CHILD_SIGNERS)
+                .context("recursive total signer count overflowed")?;
+            let expected = &public_keys[..total_signers];
+            run_optional_warmup(warmup_proofs, || {
+                let aggregate = lean_multisig::aggregate(children[..fan_in].to_vec(), &claim)
+                    .with_context(|| {
+                        format!("recursive fan-in {fan_in} proof warm-up failed")
+                    })?;
+                lean_multisig::verify(&aggregate, expected, &claim).with_context(|| {
+                    format!("recursive fan-in {fan_in} proof warm-up failed verification")
+                })?;
+                Ok(aggregate)
+            })?;
+            let mut durations = Vec::with_capacity(samples);
+            let mut retained = None;
+            for sample in 0..samples {
+                let inputs = children[..fan_in].to_vec();
+                let start = Instant::now();
+                let aggregate = lean_multisig::aggregate(inputs, &claim);
+                let duration = start.elapsed();
+                let aggregate = aggregate.with_context(|| {
+                    format!(
+                        "recursive same-claim aggregation (fan-in {fan_in}, sample {sample}) failed"
+                    )
+                })?;
+                lean_multisig::verify(&aggregate, expected, &claim).with_context(|| {
+                    format!(
+                        "recursive same-claim aggregation (fan-in {fan_in}, sample {sample}) failed post-timing verification"
+                    )
+                })?;
+                durations.push(duration);
+                retained.get_or_insert(aggregate);
+            }
+
+            let retained = retained
+                .with_context(|| format!("recursive fan-in {fan_in} retained no aggregate proof"))?;
+            RecursiveAggregationReport::new(
+                fan_in,
+                RECURSIVE_CHILD_SIGNERS,
+                summarize(
+                    durations,
+                    "recursive_same_claim_aggregate",
+                    total_signers,
+                    "LeanVM",
+                )?,
+                retained.to_bytes().len(),
+            )
+            .with_context(|| format!("failed to assemble recursive fan-in {fan_in} report"))
+        })
+        .collect()
+}
+
+fn recursive_signer_range(child_index: usize) -> Result<Range<usize>> {
+    let start = child_index
+        .checked_mul(RECURSIVE_CHILD_SIGNERS)
+        .context("recursive signer range overflowed")?;
+    let end = start
+        .checked_add(RECURSIVE_CHILD_SIGNERS)
+        .context("recursive signer range overflowed")?;
+    Ok(start..end)
 }
 
 fn write_report_files(report: &BenchmarkReport, config: &RunConfig) -> Result<()> {
@@ -902,6 +1014,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn recursive_children_use_disjoint_512_signer_ranges() {
+        assert_eq!(recursive_signer_range(0).unwrap(), 0..512);
+        assert_eq!(recursive_signer_range(1).unwrap(), 512..1_024);
+        assert_eq!(recursive_signer_range(15).unwrap(), 7_680..8_192);
+        assert!(recursive_signer_range(usize::MAX).is_err());
+    }
+
+    #[test]
     fn calibration_scales_batch_and_counts_invocations() {
         let observed = RefCell::new(Vec::new());
 
@@ -1151,6 +1271,7 @@ mod tests {
                 1,
             )
             .unwrap()],
+            recursive_aggregations: vec![],
             supplemental: vec![],
         };
 

@@ -51,9 +51,12 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn('id="explainer"', html)
         self.assertGreater(html.index('id="explainer"'), html.index('id="slow-results"'))
         self.assertIn("same-claim aggregation", lowered)
-        self.assertIn("same message", lowered)
+        self.assertIn("identical message and slot", lowered)
         self.assertIn("distinct-claim aggregation", lowered)
         self.assertIn("mixed-claim aggregation", lowered)
+        self.assertIn("recursive same-claim aggregation", lowered)
+        self.assertIn("pre-built", lowered)
+        self.assertIn("512 different signers", lowered)
         self.assertIn("8 claims (64 signers per claim)", lowered)
         self.assertIn("16 claims (32 signers per claim)", lowered)
         self.assertIn("independent signature verification", lowered)
@@ -89,6 +92,7 @@ class DashboardBuilderTests(unittest.TestCase):
         self.assertIn('"Basic operations"', html)
         self.assertIn('"Same-claim aggregation"', html)
         self.assertIn('"Same-claim verification"', html)
+        self.assertIn('"Recursive same-claim aggregation"', html)
         self.assertIn('"Distinct-claim aggregation"', html)
         self.assertIn('"Distinct-claim verification"', html)
         self.assertIn('"Independent signature verification"', html)
@@ -349,6 +353,18 @@ class DashboardBuilderTests(unittest.TestCase):
                     "operations_per_second": 1250.0,
                 },
             }
+            recursive = {
+                "workload": "recursive_same_claim_aggregate",
+                "fan_in": 2,
+                "signers_per_child": 512,
+                "total_signers": 1024,
+                "lean": {
+                    "samples_ns": [820_000_000, 830_000_000, 825_000_000],
+                    "median_ns": 825_000_000,
+                    "operations_per_second": 1_000_000_000 / 825_000_000,
+                },
+                "lean_artifact_bytes": 238_856,
+            }
             report_path.write_text(
                 json.dumps(
                     {
@@ -356,6 +372,7 @@ class DashboardBuilderTests(unittest.TestCase):
                         "samples": 3,
                         "proof_warmup": True,
                         "comparisons": [key_creation, comparison, mixed_comparison],
+                        "recursive_aggregations": [recursive],
                         "supplemental": [supplemental],
                     }
                 ),
@@ -378,6 +395,7 @@ class DashboardBuilderTests(unittest.TestCase):
                         "key_creation_slots=1048576",
                         "same_sizes=1,8,16,32,64,128,256,512",
                         "distinct_sizes=1,8,16",
+                        "recursive_fan_ins=2",
                         "proof_warmup=enabled",
                         "lighthouse_revision=deadbeef",
                         "",
@@ -418,6 +436,7 @@ class DashboardBuilderTests(unittest.TestCase):
             self.assertEqual(
                 data["comparisons"], [key_creation, comparison, mixed_comparison]
             )
+            self.assertEqual(data["recursive_aggregations"], [recursive])
             self.assertEqual(data["supplemental"], [supplemental])
             self.assertIn("4.39 GiB", stdout.getvalue())
 
