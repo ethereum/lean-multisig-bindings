@@ -21,8 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner_id: requested-chungus-x68
-            runner: '["self-hosted-ghr","size-chungus-x68"]'
+          - runner_id: requested-chungus-x86
+            runner: '["self-hosted-ghr","size-chungus-x86"]'
     runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 180
     steps:
