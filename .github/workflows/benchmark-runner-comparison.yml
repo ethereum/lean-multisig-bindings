@@ -15,15 +15,9 @@ concurrency:
 
 jobs:
   slow:
-    name: Slow suite / ${{ matrix.runner_id }}
+    name: Slow suite / requested-chungus-x86
     if: github.event.pull_request.head.repo.full_name == github.repository
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner_id: requested-chungus-x86
-            runner: '["self-hosted-ghr","size-chungus-x86"]'
-    runs-on: ${{ fromJSON(matrix.runner) }}
+    runs-on: size-chungus-x86
     timeout-minutes: 180
     steps:
       - name: Check out the comparison revision
@@ -52,7 +46,7 @@ jobs:
           fi
           {
             echo "commit=$GITHUB_SHA"
-            echo "runner_id=${{ matrix.runner_id }}"
+            echo "runner_id=requested-chungus-x86"
             echo "runner_name=${{ runner.name }}"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
@@ -113,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: runner-comparison-${{ matrix.runner_id }}-${{ github.run_id }}
+          name: runner-comparison-requested-chungus-x86-${{ github.run_id }}
           path: benchmark-artifacts/runner-comparison/
           if-no-files-found: warn
           retention-days: 7
@@ -123,7 +117,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## ${{ matrix.runner_id }}"
+            echo '## requested-chungus-x86'
             echo
             if [[ -f benchmark-artifacts/runner-comparison/environment.txt ]]; then
               echo '```text'
