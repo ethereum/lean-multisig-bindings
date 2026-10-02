@@ -142,7 +142,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.15.2
 
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
@@ -156,6 +156,11 @@ jobs:
         run: |
           sh bindings/native/scripts/stage-static.sh ${{ matrix.platform.target }} bindings/zig/.native
           cmp bindings/native/include/lean_multisig_native.h bindings/zig/include/lean_multisig_native.h
+
+      - name: Install Zig 0.16.0 for Zig tests
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
 
       - name: Test Zig bindings
         run: zig build test -Dnative-dir=.native
@@ -204,7 +209,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.15.2
 
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
