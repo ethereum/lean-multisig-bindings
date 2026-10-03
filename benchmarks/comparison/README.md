@@ -128,7 +128,8 @@ mode, sample count, and whether proof warm-up was enabled.
 
 Pull request benchmarks are opt-in. Add the `run-benchmarks` label to a
 same-repository pull request to run the fast suite and three warmed-up
-slow-suite samples on the dedicated self-hosted runner labeled `benchmark`.
+slow-suite samples on the dedicated runner labeled
+`size-attester7870-x64`.
 New commits rerun the suites while the label is present. Removing the label or
 closing the pull request cancels an active run. Fork pull requests are skipped
 because benchmark jobs execute repository code on that machine. Same-claim
@@ -159,9 +160,9 @@ and proof-warmup mode.
 
 The trusted benchmark workflow has two modes:
 
-- Relevant pushes to `main` run both suites on the dedicated self-hosted runner
-  labeled `benchmark`. With one matching runner, the jobs execute one at a
-  time. The slow suite uses three samples and proof warm-up, with same-claim
+- Relevant pushes to `main` run both suites on the dedicated runner
+  labeled `size-attester7870-x64`. With one matching runner, the jobs execute
+  one at a time. The slow suite uses three samples and proof warm-up, with same-claim
   sizes `1,8,16,256,512`, distinct-claim sizes `1,8,16`, and the fixed
   512-signature mixed workloads with 8 and 16 claims. It also measures 2, 4, 8,
   and 16 pre-built same-claim child proofs with 512 disjoint signers per child.

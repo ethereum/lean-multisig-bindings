@@ -15,7 +15,9 @@ implementation detail of this binding, not a public C API.
 
 ## Build from this repository
 
-Install Zig and `cargo-zigbuild`, then stage the native archive for your platform. On Linux x86_64:
+Install Zig 0.15.2 and `cargo-zigbuild` to stage the native archive; `cargo-zigbuild` currently
+requires this version for cross-target Apple builds. Then use Zig 0.16 or newer to build and test
+the binding. On Linux x86_64:
 
 ```sh
 rustup target add x86_64-unknown-linux-gnu
